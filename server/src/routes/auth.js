@@ -54,6 +54,17 @@ export function authRoutes({ prisma, config, auth, mailer }) {
     res.json({ user: { id: user.id, email: user.email, designer: user.designer, isDesigner: user.isDesigner, isStaff: user.isStaff, isSuperuser: user.isSuperuser }, ...tokens })
   }))
 
+  router.post('/admin/login', asyncRoute(async (req, res) => {
+    const body = credentialsSchema.parse(req.body)
+    const user = await prisma.user.findUnique({ where: { email: body.email }, include: { designer: true } })
+    if (!user || !(await bcrypt.compare(body.password, user.password))) throw new HttpError(401, 'Invalid email or password')
+    if (!user.isActive) throw new HttpError(403, 'This account is disabled')
+    if (!user.isEmailVerified) throw new HttpError(403, 'Verify your email before logging in')
+    if (!user.isStaff && !user.isSuperuser) throw new HttpError(403, 'Administrator access is required')
+    const tokens = await auth.issueTokens(user)
+    res.json({ user: { id: user.id, email: user.email, isStaff: user.isStaff, isSuperuser: user.isSuperuser }, ...tokens })
+  }))
+
   router.post('/refresh', asyncRoute(async (req, res) => {
     const { refreshToken } = z.object({ refreshToken: z.string().min(1) }).strict().parse(req.body)
     let claims

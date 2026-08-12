@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap');
+
+:root { font-family: 'DM Sans', sans-serif; color: #262c37; background: #f5f5f3; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button { font: inherit; }
+.admin-shell { min-height: 100vh; display: grid; grid-template-columns: 274px 1fr; }
+.sidebar { min-height: 100vh; background: #262d38; color: #c8ced4; padding: 30px 17px 20px; display: flex; flex-direction: column; }
+.brand { color: #f5f3ed; text-decoration: none; display: flex; align-items: center; gap: 9px; letter-spacing: .19em; font-size: 14px; font-weight: 600; padding: 0 12px 32px; }
+.brand-mark { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid #d7b780; color: #d7b780; border-radius: 50%; font-family: 'Playfair Display'; font-size: 18px; letter-spacing: 0; }
+.brand small { color: #d7b780; font-size: 8px; letter-spacing: .14em; margin-left: -3px; margin-top: 19px; }
+nav { display: grid; gap: 3px; }
+.nav-item, .subnav button, .logout { border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.nav-item { width: 100%; display: flex; align-items: center; gap: 13px; padding: 13px 12px; border-radius: 4px; font-size: 13px; }
+.nav-item:hover, .nav-item.active, .subnav button:hover, .subnav button.active { background: #343d4b; color: #fff; }
+.nav-icon { color: #d7b780; width: 15px; text-align: center; font-size: 16px; }.chevron { margin-left: auto; transition: transform .2s; }.chevron.open { transform: rotate(180deg); }
+.subnav { margin: 3px 0 7px 39px; border-left: 1px solid #48515f; display: grid; gap: 2px; }.subnav button { padding: 8px 11px; font-size: 12px; border-radius: 3px 0 0 3px; }
+.logout { margin-top: auto; padding: 13px 12px; border-top: 1px solid #414a57; color: #e1e4e7; font-size: 13px; }.logout span { color: #d7b780; font-size: 17px; margin-right: 11px; }
+.account { border-top: 1px solid #414a57; padding: 18px 9px 0; margin-top: 11px; display: flex; gap: 11px; align-items: center; }.avatar { background: #d7b780; color: #303744; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; font-size: 10px; font-weight: 600; }.account strong, .account span { display: block; }.account strong { color: #f5f3ed; font-size: 11px; font-weight: 500; }.account span { margin-top: 3px; color: #98a1ad; font-size: 10px; }
+.main-content { padding: 54px 64px; }.main-content header { display: flex; justify-content: space-between; align-items: start; border-bottom: 1px solid #d8d8d4; padding-bottom: 31px; }.eyebrow { margin: 0 0 9px; color: #94723c; font-size: 10px; font-weight: 600; letter-spacing: .16em; }.main-content h1 { font-family: 'Playfair Display', serif; font-size: 43px; font-weight: 500; margin: 0; letter-spacing: -.03em; }.header-date { color: #81858b; font-size: 12px; padding-top: 10px; }.placeholder-card { max-width: 760px; min-height: 390px; margin-top: 41px; padding: 54px; background: #fff; border: 1px solid #e5e3df; box-shadow: 0 12px 34px rgba(25, 30, 38, .035); display: grid; align-content: center; }.placeholder-card h2 { margin: 0 0 13px; font: 500 43px 'Playfair Display', serif; }.placeholder-card > p:last-child { color: #737882; margin: 0; max-width: 370px; line-height: 1.7; font-size: 14px; }
+@media (max-width: 740px) { .admin-shell { grid-template-columns: 1fr; }.sidebar { min-height: auto; }.sidebar nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }.subnav { display: none; }.logout { margin-top: 20px; }.main-content { padding: 35px 24px; }.main-content header { display: block; }.header-date { padding-top: 16px; }.placeholder-card { padding: 32px; } }
