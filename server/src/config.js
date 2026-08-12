@@ -20,6 +20,11 @@ export const config = z.object({
   SMTP_USER: z.string().min(1),
   SMTP_PASSWORD: z.string().min(1),
   EMAIL_FROM: z.string().min(3),
+  CLOUDFLARE_R2_ACCOUNT_ID: z.string().min(1),
+  CLOUDFLARE_R2_BUCKET_NAME: z.string().min(1),
+  CLOUDFLARE_R2_ACCESS_KEY_ID: z.string().min(1),
+  CLOUDFLARE_R2_SECRET_ACCESS_KEY: z.string().min(1),
+  CLOUDFLARE_R2_PUBLIC_BASE_URL: z.string().url(),
   SEED_SUPERUSER_EMAIL: z.string().email().optional().or(z.literal('')),
   SEED_SUPERUSER_PASSWORD: z.string().min(8).optional().or(z.literal(''))
 }).parse(process.env)

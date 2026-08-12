@@ -11,3 +11,11 @@ The `migrate` Compose service waits for PostgreSQL, applies Prisma migrations, t
 Unlayer HTML exports belong in `src/templates/email/signup-otp/template.html` and `src/templates/email/forgot-password-otp/template.html`. Keep the `{{otp}}`, `{{firstName}}`, and `{{appName}}` Handlebars variables in the exported HTML.
 
 Designer registration is `POST /api/v1/auth/register/designer`. It accepts `email`, `password`, and a `designer` object containing `firstName`, `lastName`, `mobileNumber`, `birthdate`, `touchpoint`, and `howDidYouHearAboutUs`; `company`, `officeAddress`, and `companyWebsite` are optional.
+
+## Cloudflare R2 media storage
+
+`src/lib/cloudflare-r2-storage.js` is a server-only utility for website images, videos, and files. It uploads an object and returns the public URL to save in the database, deletes an object by storage key or returned URL, and renames an object by copying it before deleting the source.
+
+Create a Cloudflare R2 API token restricted to the configured bucket with **Object Read & Write** permissions. Configure `CLOUDFLARE_R2_ACCOUNT_ID`, `CLOUDFLARE_R2_BUCKET_NAME`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, `CLOUDFLARE_R2_SECRET_ACCESS_KEY`, and `CLOUDFLARE_R2_PUBLIC_BASE_URL`. The public base URL must be the custom domain attached to the bucket (for example, `https://media.example.com`); never expose the R2 credentials to the browser.
+
+Use `createCloudflareR2StorageFromConfig(config)` with the existing server configuration, then call `upload({ body, fileName, contentType, prefix })`, `delete(keyOrPublicUrl)`, or `rename(keyOrPublicUrl, newFileNameOrKey)`. Upload and rename return the public URL that should be stored in the database.
