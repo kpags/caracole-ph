@@ -1,0 +1,77 @@
+{
+    "christopher_sandomenico": {
+        "name": "Christopher Sandomenico",
+        "banner": "assets/designers/images/christopher_sandomenico/banner.png",
+        "image": "assets/designers/images/christopher_sandomenico/display_picture.png",
+        "link": "https://www.linkedin.com/in/christopher-sandomenico-48877a25",
+        "intro_description": "Join Christopher Sandomenico as he elaborates on the latest designs and material applications.",
+        "profile_description": "Caracole Director of Product Development, Christopher Sandomenico, frequently provides expert direction on new material integrations, structural lines, and the brand's exploration of graceful, eye-catching curves.",
+        "featured_products": [
+            {
+                "name": "Mirror Image",
+                "image": "assets/designers/images/christopher_sandomenico/featured_product_1.jpg",
+                "description": "This parsons-style dining table draws the eye with an abstracted pattern on top in a mix of dyed tupelo and eucalyptus veneers. The subtle difference in wood tones and contrasting grains are pieced together in a way that creates an image that appears to change, depending on your perspective; in other words, leaving its interpretation to the viewer."
+            },
+            {
+                "name": "Super Nova",
+                "image": "assets/designers/images/christopher_sandomenico/featured_product_2.jpg",
+                "description": "When an unexpected mix of materials and finishes works together, it creates an aha-moment and a story."
+            },
+            {
+                "name": "Escher",
+                "image": "assets/designers/images/christopher_sandomenico/featured_product_3.jpg",
+                "description": "The materials that we chose for this collection have an old-world feel; a nod toward antiquity, but the way in which they are presented on individual pieces has a fresh, contemporary feel."
+            }
+        ]
+    },
+    "ryan_saghian": {
+        "name": "Ryan Saghian",
+        "banner": "assets/designers/images/ryan_saghian/banner.png",
+        "image": "assets/designers/images/ryan_saghian/display_picture.png",
+        "link": "https://www.ryansaghian.com/",
+        "intro_description": "Eye-catching details and contrasting finishes create depth and add emphasis.",
+        "profile_description": "Ryan Saghian designs for those who live unapologetically. His work — an intentional balance of rawness and refinement — is driven by storytelling, material honesty, and a deep respect for culture and place.",
+        "featured_products": [
+            {
+                "name": "Emphasis",
+                "image": "assets/designers/images/ryan_saghian/featured_product_1.jpg",
+                "description": "A refined accent chair defined by slender metallic lines, softly tailored upholstery, and a sculptural silhouette. Emphasis brings understated glamour and polished comfort to a luxurious living room."
+            },
+            {
+                "name": "Balance",
+                "image": "assets/designers/images/ryan_saghian/featured_product_2.jpg",
+                "description": "An elegant six-drawer dresser that pairs a softly textured neutral finish with delicate metallic detailing. Balance offers generous storage while maintaining a calm, sophisticated presence suited to a serene bedroom."
+            },
+            {
+                "name": "Unity",
+                "image": "assets/designers/images/ryan_saghian/featured_product_3.jpg",
+                "description": "A statement lounge chair combining substantial natural-wood framing with relaxed, neutral upholstery. Unity harmonizes architectural structure and inviting comfort, making it an elegant addition to either a living or dining environment."
+            }
+        ]
+    },
+    "mark_bumgarner": {
+        "name": "Mark Bumgarner",
+        "banner": "assets/designers/images/mark_bumgarner/banner.png",
+        "image": "assets/designers/images/mark_bumgarner/display_picture.png",
+        "link": "https://www.facebook.com/MarkBumgarnerManila/",
+        "intro_description": "A space designed with both beauty and intention, the Mark Bumgarner Bridal Studio is a study in modern refinement.",
+        "profile_description": "Mark Bumgarner wasn't supposed to be a fashion designer. Earlier in his life, he was worlds away, making a name for himself as a professional race car driver. He eventually realised that fashion and design were his calling and decided to switch careers. “I fell in love with the fashion industry by accident,” he told Tatler. “I started with having zero business knowledge to making it my full-time career.”",
+        "featured_products": [
+            {
+                "name": "Movement Sofa",
+                "image": "assets/designers/images/mark_bumgarner/featured_product_1.jpg",
+                "description": "With gracefully curving lines that guide the eye along its layered back and sides, the Movement sofa invites a sense of calm and repose. Meticulously tailored in a subtly textured alabaster fabric, its sinuous silhouette offers sleek yet comfortable seating, with enveloping arms and a gently bowed front that appears to be floating. Style in pairs to create an inviting space for conversation and entertaining."
+            },
+            {
+                "name": "Movement Chair",
+                "image": "assets/designers/images/mark_bumgarner/featured_product_2.jpg",
+                "description": "Meticulously tailored in a subtly textured alabaster fabric, the Movement chair invites a sense of calm and repose. Defined by gracefully curving lines that guide the eye along its layered back and sides, its enveloping silhouette offers sleek yet comfortable seating. Style a pair with our Movement sofa to create a chic modern space for conversation and entertaining."
+            },
+            {
+                "name": "Contrast Cocktail Table",
+                "image": "assets/designers/images/mark_bumgarner/featured_product_3.jpg",
+                "description": "An artistic expression of modern elegance, this cocktail table adds interest and fluidity to living interiors. Its sleek design consists of an asymmetrical top crafted from radiating quarter sawn oak in Lucent Bronze, accentuated by a kidney-shaped stone section for added depth and striking contrast. A curved pedestal base in a dramatic Cinder finish naturally mimics its sense of movement."
+            }
+        ]
+    }
+}

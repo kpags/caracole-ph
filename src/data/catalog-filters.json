@@ -1,0 +1,106 @@
+[
+  {
+    "name": "Living",
+    "count": 62,
+    "subcategories": [
+      {
+        "name": "Benches & Ottomans",
+        "count": 2
+      },
+      {
+        "name": "Center & Cocktail Tables",
+        "count": 3
+      },
+      {
+        "name": "Chairs",
+        "count": 7
+      },
+      {
+        "name": "Cocktail Tables",
+        "count": 6
+      },
+      {
+        "name": "Consoles & Desks",
+        "count": 2
+      },
+      {
+        "name": "Etageres & Shelves",
+        "count": 1
+      },
+      {
+        "name": "Settees & Chaises",
+        "count": 1
+      },
+      {
+        "name": "Side & End Tables",
+        "count": 14
+      },
+      {
+        "name": "Sofas & Loveseats",
+        "count": 2
+      }
+    ]
+  },
+  {
+    "name": "Dining",
+    "count": 15,
+    "subcategories": [
+      {
+        "name": "Dining Armchairs",
+        "count": 1
+      },
+      {
+        "name": "Dining Chairs",
+        "count": 5
+      },
+      {
+        "name": "Dining Side Chairs",
+        "count": 1
+      },
+      {
+        "name": "Dining Tables",
+        "count": 1
+      },
+      {
+        "name": "Sideboards & Buffets",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "name": "Bedroom",
+    "count": 19,
+    "subcategories": [
+      {
+        "name": "Bed End Benches & Ottomans",
+        "count": 2
+      },
+      {
+        "name": "Beds",
+        "count": 3
+      },
+      {
+        "name": "Chest Of Drawers",
+        "count": 1
+      },
+      {
+        "name": "Dressers",
+        "count": 1
+      },
+      {
+        "name": "Nightstands",
+        "count": 6
+      }
+    ]
+  },
+  {
+    "name": "Mirrors & Accessories",
+    "count": 1,
+    "subcategories": []
+  },
+  {
+    "name": "Entertainment",
+    "count": 2,
+    "subcategories": []
+  }
+]

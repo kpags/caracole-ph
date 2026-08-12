@@ -1,0 +1,26 @@
+{
+  "name": "caracole-ph-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:generate": "prisma generate",
+    "db:seed-system-admin": "node scripts/seed-system-administrator.js",
+    "db:deploy": "prisma migrate deploy && npm run db:seed-system-admin && node -e \"console.log('Database migrations and system-administrator seed completed successfully.')\"",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.14.0",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "handlebars": "^4.7.8",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^7.0.5",
+    "prisma": "^6.14.0",
+    "zod": "^4.0.17"
+  }
+}
