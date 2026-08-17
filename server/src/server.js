@@ -3,8 +3,15 @@ import { createApp } from './app.js'
 import { createAuth } from './lib/auth.js'
 import { createMailer } from './lib/email.js'
 import { prisma } from './lib/prisma.js'
+import { createCloudflareR2StorageFromConfig } from './lib/cloudflare-r2-storage.js'
 
-const app = createApp({ prisma, config, auth: createAuth({ prisma, config }), mailer: createMailer(config) })
+const app = createApp({
+  prisma,
+  config,
+  auth: createAuth({ prisma, config }),
+  mailer: createMailer(config),
+  storage: createCloudflareR2StorageFromConfig(config)
+})
 const server = app.listen(config.PORT, () => console.log(`API listening on port ${config.PORT}`))
 
 async function shutdown(signal) {

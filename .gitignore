@@ -8,3 +8,5 @@ dist/
 *.tar.gz
 outputs/
 work/
+products/
+assets/templates

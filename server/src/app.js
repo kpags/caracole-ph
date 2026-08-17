@@ -2,10 +2,11 @@ import cors from 'cors'
 import express from 'express'
 import jwt from 'jsonwebtoken'
 import { authRoutes } from './routes/auth.js'
+import { heroBannersRoutes } from './routes/hero-banners.js'
 import { usersRoutes } from './routes/users.js'
 import { asyncRoute, errorHandler, HttpError } from './lib/http.js'
 
-export function createApp({ prisma, config, auth, mailer }) {
+export function createApp({ prisma, config, auth, mailer, storage }) {
   const app = express()
   app.disable('x-powered-by')
   app.use(cors({ origin: config.CORS_ORIGIN.split(',').map((origin) => origin.trim()), credentials: true }))
@@ -37,6 +38,7 @@ export function createApp({ prisma, config, auth, mailer }) {
     res.json({ status: 'ok' })
   }))
   app.use('/api/v1/auth', authRoutes({ prisma, config, auth, mailer }))
+  app.use('/api/v1/hero-banners', heroBannersRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/users', usersRoutes({ prisma, authenticate, authorize }))
   app.use((_req, _res, next) => next(new HttpError(404, 'Route not found')))
   app.use(errorHandler)

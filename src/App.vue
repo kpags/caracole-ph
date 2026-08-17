@@ -118,9 +118,13 @@ const homeLink = (anchor = "") =>
     ? `/${anchor}`
     : anchor || "#top";
 
-const videos = [
+// These original slides are display-only fallbacks. They are never created in
+// the database; saved hero banners replace them from left to right by position.
+const placeholderHeroBanners = [
   {
+    id: "placeholder-living",
     src: "/media/showcase/living.mp4",
+    mediaType: "video",
     eyebrow: "The Art of Living",
     title: "A room should move you.",
     copy: "Sculptural silhouettes and tactile comfort, composed for the way life unfolds.",
@@ -128,7 +132,9 @@ const videos = [
     cta: "Explore Living",
   },
   {
+    id: "placeholder-dining",
     src: "/media/showcase/dining.mp4",
+    mediaType: "video",
     eyebrow: "Gather Beautifully",
     title: "Every occasion, elevated.",
     copy: "Statement tables and graceful seating set the stage for conversations worth remembering.",
@@ -136,7 +142,9 @@ const videos = [
     cta: "Explore Dining",
   },
   {
+    id: "placeholder-bedroom",
     src: "/media/showcase/bedroom.mp4",
+    mediaType: "video",
     eyebrow: "The Private Retreat",
     title: "Rest, reimagined.",
     copy: "Quiet luxury, refined proportions, and layers of softness for your most personal space.",
@@ -144,6 +152,47 @@ const videos = [
     cta: "Explore Bedroom",
   },
 ];
+const videos = ref([...placeholderHeroBanners]);
+const apiBaseUrl = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(
+  /\/$/,
+  "",
+);
+
+function heroBannerToSlide(banner) {
+  const category = banner.category === "Entertainments" ? "Entertainment" : banner.category;
+  const categorySlug = categorySlugs[category] || "living";
+
+  return {
+    id: banner.id,
+    src: banner.mediaUrl,
+    mediaType: banner.mediaType,
+    eyebrow: banner.subtitle || "Caracole Philippines",
+    title: banner.title,
+    copy: banner.description,
+    href: `/products/${categorySlug}`,
+    cta: `Explore ${category}`,
+  };
+}
+
+async function loadHeroBanners() {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/hero-banners`);
+    if (!response.ok) throw new Error("Hero banners are unavailable");
+
+    const payload = await response.json();
+    const savedBannersByPosition = new Map(
+      (payload.heroBanners || []).map((banner) => [banner.position, heroBannerToSlide(banner)]),
+    );
+    videos.value = placeholderHeroBanners.map(
+      (placeholder, index) => savedBannersByPosition.get(index) || placeholder,
+    );
+    currentVideo.value = 0;
+    videoProgress.value = 0;
+  } catch (error) {
+    console.warn("Unable to load hero banners", error);
+    videos.value = [...placeholderHeroBanners];
+  }
+}
 
 const requestedSubcategories = {
   Living: [
@@ -416,11 +465,12 @@ const cartCount = computed(() =>
 const cartTotal = computed(() => cartSubtotal(cartItems.value));
 const wishlistSet = ref(new Set());
 
-const activeVideo = computed(() => videos[currentVideo.value]);
+const activeVideo = computed(() => videos.value[currentVideo.value] || null);
 const activeLook = computed(() => looks[lookIndex.value]);
 
 function selectVideo(index) {
-  currentVideo.value = (index + videos.length) % videos.length;
+  if (!videos.value.length) return;
+  currentVideo.value = (index + videos.value.length) % videos.value.length;
   videoProgress.value = 0;
 }
 
@@ -800,6 +850,7 @@ onMounted(() => {
   window.addEventListener(WISHLIST_EVENT, refreshWishlist);
   refreshCart();
   refreshWishlist();
+  void loadHeroBanners();
   storedAccounts();
   try {
     currentUser.value = JSON.parse(
@@ -1554,11 +1605,13 @@ onBeforeUnmount(() => {
       id="main"
     >
       <section
+        v-if="activeVideo"
         id="top"
         class="hero"
         aria-label="Caracole cinematic collection showcase"
       >
         <video
+          v-if="activeVideo.mediaType === 'video'"
           ref="videoEl"
           class="hero-video"
           :key="activeVideo.src"
@@ -1571,6 +1624,12 @@ onBeforeUnmount(() => {
         >
           <source :src="activeVideo.src" type="video/mp4" />
         </video>
+        <img
+          v-else
+          class="hero-video"
+          :src="activeVideo.src"
+          :alt="activeVideo.title"
+        />
         <div class="hero-scrim"></div>
         <div class="hero-content">
           <p class="eyebrow light">{{ activeVideo.eyebrow }}</p>
@@ -1587,7 +1646,7 @@ onBeforeUnmount(() => {
         <div class="hero-rail">
           <button
             v-for="(video, index) in videos"
-            :key="video.eyebrow"
+            :key="video.id"
             type="button"
             :class="{ active: currentVideo === index }"
             :aria-label="`Play ${video.eyebrow}`"

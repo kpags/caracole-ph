@@ -17,3 +17,14 @@ export const designerSchema = z.object({
 }).strict()
 
 export const designerUpdateSchema = designerSchema.partial().refine((value) => Object.keys(value).length > 0, 'Provide at least one designer field')
+
+const heroBannerFields = {
+  title: z.string().trim().min(1).max(80),
+  subtitle: z.string().trim().max(120).optional().transform((value) => value || null),
+  description: z.string().trim().min(1).max(200),
+  category: z.string().trim().min(1).max(80)
+}
+const heroBannerPosition = z.coerce.number().int().min(0).max(2)
+
+export const heroBannerCreateSchema = z.object({ ...heroBannerFields, position: heroBannerPosition }).strict()
+export const heroBannerUpdateSchema = z.object({ ...heroBannerFields, position: heroBannerPosition.optional() }).partial().strict().refine((value) => Object.keys(value).length > 0, 'Provide at least one hero banner field')
