@@ -9,12 +9,14 @@
     "db:generate": "prisma generate",
     "db:seed-system-admin": "node scripts/seed-system-administrator.js",
     "db:deploy": "prisma migrate deploy && npm run db:seed-system-admin && node -e \"console.log('Database migrations and system-administrator seed completed successfully.')\"",
+    "shopify:sync-products": "node scripts/sync-shopify-products.js",
     "test": "node --test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",
     "@aws-sdk/lib-storage": "^3.1108.0",
     "@prisma/client": "^6.14.0",
+    "@shopify/storefront-api-client": "^2.0.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",

@@ -1,6 +1,6 @@
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { getProductPath, productCatalog } from '../data/catalog.js'
+import { getProductPath, productKey, useCatalog } from '../data/catalog.js'
 
 const props = defineProps({ open: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
@@ -9,6 +9,7 @@ const query = ref('')
 const results = ref([])
 const searching = ref(false)
 let searchTimer
+const { products, status, error, load } = useCatalog()
 
 function searchableText(product) {
   return [
@@ -21,7 +22,7 @@ function searchableText(product) {
 function runSearch(value) {
   const normalized = value.trim().toLowerCase()
   const terms = normalized.split(/\s+/).filter(Boolean)
-  results.value = productCatalog
+  results.value = products.value
     .map((product) => {
       const haystack = searchableText(product)
       if (!terms.every((term) => haystack.includes(term))) return null
@@ -61,6 +62,7 @@ watch(query, (value) => {
 
 watch(() => props.open, async (open) => {
   if (!open) return
+  load().catch(() => {})
   query.value = ''
   results.value = []
   searching.value = false
@@ -83,10 +85,11 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
             <input ref="input" v-model="query" type="search" autocomplete="off" placeholder="Name, EDP, article, finish, size or category" aria-label="Search products" />
           </div>
           <div v-if="query.trim()" class="search-results" aria-live="polite">
-            <div v-if="searching" class="search-results__state"><i></i><span>Searching the collection…</span></div>
+            <div v-if="status === 'loading' || searching" class="search-results__state"><i></i><span>Searching the collection…</span></div>
+            <div v-else-if="status === 'error'" class="search-results__state"><span>{{ error }}</span></div>
             <template v-else-if="results.length">
               <div class="search-results__count">{{ results.length }} matching {{ results.length === 1 ? 'piece' : 'pieces' }}</div>
-              <a v-for="product in results" :key="product.edpNumber" class="search-result" :href="getProductPath(product)">
+              <a v-for="product in results" :key="productKey(product)" class="search-result" :href="getProductPath(product)">
                 <img :src="product.image" :alt="product.name" />
                 <span><small>{{ product.displayCategory }} · {{ product.subcategory === '--' ? 'Collection' : product.subcategory }}</small><b>{{ product.name }}</b><em>EDP {{ product.edpNumber }}<template v-if="product.articleNumber && product.articleNumber !== '--'"> · {{ product.articleNumber }}</template></em></span>
                 <strong>{{ formatPrice(product.priceValue) }}</strong><i aria-hidden="true">→</i>

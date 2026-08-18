@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { getProductPath, productCatalog } from '../data/catalog.js'
+import { getProductPath, productKey, useCatalog } from '../data/catalog.js'
 import { getProductFacets, productTimestamp } from '../data/product-facets.js'
 import { getWishlist, toggleWishlist, WISHLIST_EVENT } from '../data/wishlist.js'
 
@@ -16,8 +16,9 @@ const newArrivalsOnly = ref(false)
 const inStockOnly = ref(false)
 const page = ref(1)
 const perPage = 10
+const { products, status, error, load } = useCatalog()
 
-const wishlistProducts = computed(() => wishlist.value.map((edp) => productCatalog.find((product) => product.edpNumber === edp)).filter(Boolean).map((product) => ({ ...product, facets: getProductFacets(product) })))
+const wishlistProducts = computed(() => wishlist.value.map((id) => products.value.find((product) => productKey(product) === id)).filter(Boolean).map((product) => ({ ...product, facets: getProductFacets(product) })))
 const categoryOptions = computed(() => [...new Set(wishlistProducts.value.map((product) => product.displayCategory))].sort())
 const subcategoryOptions = computed(() => [...new Set(wishlistProducts.value.filter((product) => !category.value || product.displayCategory === category.value).map((product) => product.subcategory).filter((value) => value && value !== '--'))].sort())
 
@@ -60,7 +61,7 @@ const activeFilterCount = computed(() => Object.values(selected).reduce((total, 
 
 function toggleSelection(group, value) { const index = selected[group].indexOf(value); index === -1 ? selected[group].push(value) : selected[group].splice(index, 1) }
 function clearFilters() { Object.values(selected).forEach((values) => values.splice(0)); category.value = ''; subcategory.value = ''; priceMin.value = ''; priceMax.value = ''; newArrivalsOnly.value = false; inStockOnly.value = false }
-function removeFromWishlist(product) { wishlist.value = toggleWishlist(product.edpNumber) }
+function removeFromWishlist(product) { wishlist.value = toggleWishlist(productKey(product)) }
 function refreshWishlist() { wishlist.value = getWishlist() }
 function formatPrice(product) { const value = Number(product.priceValue); return value ? new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(value) : 'Price upon request' }
 function reviewMetrics(product) { const hash = [...String(product.edpNumber)].reduce((total, character) => total + character.charCodeAt(0), 0); return { rating: (4.2 + (hash % 8) / 10).toFixed(1), count: 24 + (hash * 7) % 438 } }
@@ -69,16 +70,18 @@ function handleKey(event) { if (event.key === 'Escape') drawerOpen.value = false
 
 watch(category, () => { if (!subcategoryOptions.value.includes(subcategory.value)) subcategory.value = '' })
 watch([category, subcategory, sort, priceMin, priceMax, newArrivalsOnly, inStockOnly, () => JSON.stringify(selected)], () => { page.value = 1 })
-onMounted(() => { refreshWishlist(); window.addEventListener(WISHLIST_EVENT, refreshWishlist); window.addEventListener('keydown', handleKey) })
+onMounted(() => { load().catch(() => {}); refreshWishlist(); window.addEventListener(WISHLIST_EVENT, refreshWishlist); window.addEventListener('keydown', handleKey) })
 onBeforeUnmount(() => { window.removeEventListener(WISHLIST_EVENT, refreshWishlist); window.removeEventListener('keydown', handleKey) })
 </script>
 
 <template>
   <main id="main" class="wishlist-page">
     <header class="wishlist-page__header"><p class="eyebrow">Saved for later</p><h1>Wishlist</h1><p>Your personal edit of Caracole pieces, stored in this browser.</p></header>
-    <section v-if="wishlistProducts.length" class="wishlist-products">
+    <section v-if="status === 'loading'" class="wishlist-empty"><p class="eyebrow">Loading collection</p><h2>Gathering your saved pieces.</h2></section>
+    <section v-else-if="status === 'error'" class="wishlist-empty"><p class="eyebrow">Catalog unavailable</p><h2>We couldn’t load your saved pieces.</h2><p>{{ error }}</p><button type="button" @click="load({ force: true }).catch(() => {})">Try again</button></section>
+    <section v-else-if="wishlistProducts.length" class="wishlist-products">
       <div class="wishlist-toolbar"><div class="wishlist-category-filters"><label>Main category<select v-model="category"><option value="">All categories</option><option v-for="option in categoryOptions" :key="option">{{ option }}</option></select></label><label>Subcategory<select v-model="subcategory"><option value="">All subcategories</option><option v-for="option in subcategoryOptions" :key="option">{{ option }}</option></select></label></div><div><span>{{ filteredProducts.length }} saved pieces</span><button type="button" @click="drawerOpen = true">Filters <b v-if="activeFilterCount">{{ activeFilterCount }}</b><i>+</i></button></div></div>
-      <div v-if="paginatedProducts.length" class="catalog-grid" role="list"><article v-for="product in paginatedProducts" :key="product.edpNumber" class="catalog-card" role="listitem"><div class="catalog-card__image"><a class="catalog-card__image-link" :href="getProductPath(product)"><img :src="product.image" :alt="product.name" loading="lazy" /></a><div class="catalog-card__badges"><span v-if="product.isNewArrival">New</span><span v-if="Number(product.stockQuantity) <= 0" class="out-of-stock">Out of Stock</span></div><button class="wishlist-heart active" type="button" :aria-label="`Remove ${product.name} from wishlist`" @click="removeFromWishlist(product)"><span aria-hidden="true">♥</span></button><div class="catalog-card__actions"><a :href="getProductPath(product)">View Piece</a></div></div><div class="catalog-card__copy"><a :href="getProductPath(product)"><h3>{{ product.name }}</h3></a><p class="catalog-card__price">{{ formatPrice(product) }}</p><p class="catalog-card__reviews"><span aria-hidden="true">★★★★★</span><b>{{ reviewMetrics(product).rating }}</b><small>({{ formatReviewCount(reviewMetrics(product).count) }} reviews)</small></p></div></article></div>
+      <div v-if="paginatedProducts.length" class="catalog-grid" role="list"><article v-for="product in paginatedProducts" :key="productKey(product)" class="catalog-card" role="listitem"><div class="catalog-card__image"><a class="catalog-card__image-link" :href="getProductPath(product)"><img :src="product.image" :alt="product.name" loading="lazy" /></a><div class="catalog-card__badges"><span v-if="product.isNewArrival">New</span><span v-if="Number(product.stockQuantity) <= 0" class="out-of-stock">Out of Stock</span></div><button class="wishlist-heart active" type="button" :aria-label="`Remove ${product.name} from wishlist`" @click="removeFromWishlist(product)"><span aria-hidden="true">♥</span></button><div class="catalog-card__actions"><a :href="getProductPath(product)">View Piece</a></div></div><div class="catalog-card__copy"><a :href="getProductPath(product)"><h3>{{ product.name }}</h3></a><p class="catalog-card__price">{{ formatPrice(product) }}</p><p class="catalog-card__reviews"><span aria-hidden="true">★★★★★</span><b>{{ reviewMetrics(product).rating }}</b><small>({{ formatReviewCount(reviewMetrics(product).count) }} reviews)</small></p></div></article></div>
       <div v-else class="catalog-empty"><p class="eyebrow">No matching pieces</p><h2>Let’s widen the view.</h2><button type="button" @click="clearFilters">Clear all filters</button></div>
       <nav v-if="pageCount > 1" class="wishlist-pagination" aria-label="Wishlist pages"><button v-for="pageNumber in pageCount" :key="pageNumber" type="button" :class="{ active: page === pageNumber }" :aria-current="page === pageNumber ? 'page' : undefined" @click="page = pageNumber">{{ String(pageNumber).padStart(2, '0') }}</button></nav>
     </section>

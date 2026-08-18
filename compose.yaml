@@ -48,5 +48,17 @@ services:
       timeout: 5s
       retries: 6
 
+  catalog-scheduler:
+    build:
+      context: ./server
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Asia/Manila
+    command: sh scripts/run-shopify-scheduler.sh
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   postgres_data:

@@ -63,7 +63,7 @@ onMounted(() => {
 
       <aside class="checkout-summary">
         <p class="eyebrow">Final order</p><h2>Your pieces</h2>
-        <div class="checkout-summary__items"><article v-for="item in items" :key="item.edpNumber"><img :src="item.image" :alt="item.name" /><div><b>{{ item.name }}</b><small>Quantity {{ item.quantity }}</small></div><strong>{{ formatCartPrice(item.priceValue * item.quantity) }}</strong></article></div>
+        <div class="checkout-summary__items"><article v-for="item in items" :key="item.id"><img :src="item.image" :alt="item.name" /><div><b>{{ item.name }}</b><small>Quantity {{ item.quantity }}</small></div><strong>{{ formatCartPrice(item.priceValue * item.quantity) }}</strong></article></div>
         <dl><div><dt>Subtotal</dt><dd>{{ formatCartPrice(subtotal) }}</dd></div><div><dt>Delivery</dt><dd>{{ checkout.shippingFee ? formatCartPrice(checkout.shippingFee) : 'Complimentary' }}</dd></div><div><dt>Total</dt><dd>{{ formatCartPrice(total) }}</dd></div></dl>
       </aside>
     </section>

@@ -1,9 +1,10 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { getProductPath, productCatalog } from '../data/catalog.js'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { getProductPath, productKey, useCatalog } from '../data/catalog.js'
 import { getProductFacets, productTimestamp } from '../data/product-facets.js'
 import { getWishlist, toggleWishlist, WISHLIST_EVENT } from '../data/wishlist.js'
 import ProductImageCarousel from './ProductImageCarousel.vue'
+import Paginator from 'primevue/paginator'
 
 const props = defineProps({
   category: { type: String, default: '' },
@@ -28,8 +29,23 @@ const newArrivalsOnly = ref(false)
 const inStockOnly = ref(false)
 const notificationSet = ref(new Set())
 const wishlistSet = ref(new Set())
+const { products, pagination, status, error, load } = useCatalog()
+const page = ref(1)
+const limit = ref(24)
+const first = computed(() => (page.value - 1) * limit.value)
 
-const baseProducts = computed(() => productCatalog
+function loadPage(nextPage = page.value, { force = false } = {}) {
+  page.value = nextPage
+  return load({ force, page: nextPage, limit: limit.value, ...(props.newArrivalsPage ? {} : { category: props.category }), ...(props.subcategory ? { subcategory: props.subcategory } : {}) }).catch(() => {})
+}
+
+function handlePageChange(event) {
+  const rowsChanged = event.rows !== limit.value
+  limit.value = event.rows
+  loadPage(rowsChanged ? 1 : event.page + 1)
+}
+
+const baseProducts = computed(() => products.value
   .filter((product) => props.newArrivalsPage ? product.isNewArrival : product.displayCategory === props.category)
   .filter((product) => props.newArrivalsPage || !props.subcategory || product.subcategory === props.subcategory)
   .map((product) => ({ ...product, facets: getProductFacets(product) })))
@@ -109,13 +125,13 @@ function formatReviewCount(count) {
 
 function notifyWhenAvailable(product) {
   const next = new Set(notificationSet.value)
-  next.add(product.edpNumber)
+  next.add(productKey(product))
   notificationSet.value = next
   localStorage.setItem('caracole-stock-notifications', JSON.stringify([...next]))
 }
 
 function updateWishlist(product) {
-  wishlistSet.value = new Set(toggleWishlist(product.edpNumber))
+  wishlistSet.value = new Set(toggleWishlist(productKey(product)))
 }
 
 function refreshWishlist() {
@@ -127,11 +143,13 @@ function handleKey(event) {
 }
 
 onMounted(() => {
+  loadPage()
   window.addEventListener('keydown', handleKey)
   window.addEventListener(WISHLIST_EVENT, refreshWishlist)
   refreshWishlist()
   try { notificationSet.value = new Set(JSON.parse(localStorage.getItem('caracole-stock-notifications') || '[]')) } catch { notificationSet.value = new Set() }
 })
+watch(() => [props.category, props.subcategory, props.newArrivalsPage], () => loadPage(1))
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKey)
   window.removeEventListener(WISHLIST_EVENT, refreshWishlist)
@@ -158,18 +176,20 @@ onBeforeUnmount(() => {
           <h2 id="catalog-heading">{{ newArrivalsPage ? pageTitle : (subcategory || `${category} Collection`) }}</h2>
         </div>
         <div class="catalog-toolbar__actions">
-          <span>{{ filteredProducts.length }} of {{ baseProducts.length }} pieces</span>
+          <span>{{ pagination.totalItems }} pieces</span>
           <button type="button" @click="drawerOpen = true">Filters <b v-if="activeFilterCount">{{ activeFilterCount }}</b><i>+</i></button>
         </div>
       </div>
 
-      <div v-if="filteredProducts.length" class="catalog-grid" role="list">
-        <article v-for="product in filteredProducts" :key="product.edpNumber" class="catalog-card" role="listitem">
+      <div v-if="status === 'loading'" class="catalog-empty"><p class="eyebrow">Loading collection</p><h2>Gathering the pieces.</h2></div>
+      <div v-else-if="status === 'error'" class="catalog-empty"><p class="eyebrow">Catalog unavailable</p><h2>We couldn’t load the collection.</h2><p>{{ error }}</p><button type="button" @click="loadPage(page, { force: true })">Try again</button></div>
+      <div v-else-if="filteredProducts.length" class="catalog-grid" role="list">
+        <article v-for="product in filteredProducts" :key="productKey(product)" class="catalog-card" role="listitem">
           <div class="catalog-card__image">
             <a class="catalog-card__image-link" :href="getProductPath(product)"><ProductImageCarousel :product="product" /></a>
             <div class="catalog-card__badges"><span v-if="product.isNewArrival">New</span><span v-if="Number(product.stockQuantity) <= 0" class="out-of-stock">Out of Stock</span></div>
-            <button class="wishlist-heart" type="button" :class="{ active: wishlistSet.has(product.edpNumber) }" :aria-label="wishlistSet.has(product.edpNumber) ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`" @click="updateWishlist(product)"><span aria-hidden="true">{{ wishlistSet.has(product.edpNumber) ? '♥' : '♡' }}</span></button>
-            <div class="catalog-card__actions"><a :href="getProductPath(product)">View Piece</a><button v-if="Number(product.stockQuantity) <= 0" type="button" :class="{ active: notificationSet.has(product.edpNumber) }" @click="notifyWhenAvailable(product)"><span class="bell-icon" aria-hidden="true"></span>{{ notificationSet.has(product.edpNumber) ? 'Notification Set' : 'Notify Me' }}</button></div>
+            <button class="wishlist-heart" type="button" :class="{ active: wishlistSet.has(productKey(product)) }" :aria-label="wishlistSet.has(productKey(product)) ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`" @click="updateWishlist(product)"><span aria-hidden="true">{{ wishlistSet.has(productKey(product)) ? '♥' : '♡' }}</span></button>
+            <div class="catalog-card__actions"><a :href="getProductPath(product)">View Piece</a><button v-if="Number(product.stockQuantity) <= 0" type="button" :class="{ active: notificationSet.has(productKey(product)) }" @click="notifyWhenAvailable(product)"><span class="bell-icon" aria-hidden="true"></span>{{ notificationSet.has(productKey(product)) ? 'Notification Set' : 'Notify Me' }}</button></div>
           </div>
           <div class="catalog-card__copy">
             <a :href="getProductPath(product)"><h3>{{ product.name }}</h3></a>
@@ -178,7 +198,17 @@ onBeforeUnmount(() => {
           </div>
         </article>
       </div>
-      <div v-else class="catalog-empty">
+      <Paginator
+        v-if="pagination.totalPages > 1"
+        class="catalog-paginator"
+        :first="first"
+        :rows="limit"
+        :total-records="pagination.totalItems"
+        :rows-per-page-options="[24, 48, 72]"
+        :disabled="status === 'loading'"
+        @page="handlePageChange"
+      />
+      <div v-else-if="!filteredProducts.length" class="catalog-empty">
         <p class="eyebrow">No matching pieces</p>
         <h2>Let’s widen the view.</h2>
         <p>Clear your selected filters to see more of the {{ collectionLabel }} collection.</p>

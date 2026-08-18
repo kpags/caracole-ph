@@ -53,6 +53,10 @@ const validEnvironment = {
   CLOUDFLARE_R2_BUCKET_NAME: 'website-media',
   CLOUDFLARE_R2_ACCESS_KEY_ID: 'access-key',
   CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'secret-key',
+  SHOPIFY_STORE_DOMAIN: 'dexterton-2.myshopify.com',
+  SHOPIFY_PRIVATE_ACCESS_TOKEN: 'shopify-token',
+  SHOPIFY_CLIENT_ID: 'shopify-client-id',
+  SHOPIFY_CLIENT_SECRET: 'shopify-client-secret',
   CLOUDFLARE_R2_PUBLIC_BASE_URL: 'https://media.caracole.ph'
 }
 

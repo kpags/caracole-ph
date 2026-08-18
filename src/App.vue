@@ -14,8 +14,14 @@ import AccordionHeader from "primevue/accordionheader";
 import AccordionPanel from "primevue/accordionpanel";
 import {
   catalogFilters,
-  getProductByEdp,
+  catalogProducts,
+  catalogStatus,
+  catalogError,
+  getProductByHandle,
   getProductPath,
+  loadCatalog,
+  loadProductByHandle,
+  productKey,
 } from "./data/catalog.js";
 import ProductListingPage from "./components/ProductListingPage.vue";
 import ProductDetailPage from "./components/ProductDetailPage.vue";
@@ -64,9 +70,9 @@ const productRouteMatch =
   typeof window !== "undefined"
     ? window.location.pathname.match(/^\/product\/([^/]+)\/?$/)
     : null;
-const selectedProduct = productRouteMatch
-  ? getProductByEdp(decodeURIComponent(productRouteMatch[1]))
-  : null;
+const selectedProduct = computed(() => productRouteMatch
+  ? getProductByHandle(decodeURIComponent(productRouteMatch[1]))
+  : null);
 const isCartPage =
   typeof window !== "undefined" && /^\/cart\/?$/.test(window.location.pathname);
 const isCheckoutPage =
@@ -103,7 +109,7 @@ const listingSubcategory = listingCategory
   ? routeQuery.get("subcategory") || routeQuery.get("sub_category") || ""
   : "";
 const isListingPage = Boolean(listingCategory || isNewArrivalsPage);
-const isProductPage = Boolean(selectedProduct);
+const isProductPage = Boolean(productRouteMatch);
 const homeLink = (anchor = "") =>
   isListingPage ||
   isProductPage ||
@@ -235,8 +241,8 @@ function catalogSubcategories(category) {
     count: counts.get(name) ?? 0,
     href: `/products/${categorySlug}?subcategory=${encodeURIComponent(name)}`,
     filter: { category, subcategory: name },
-  }));
-}
+    }));
+};
 
 const categories = [
   {
@@ -279,17 +285,11 @@ const categories = [
   },
 ];
 
-const newArrivalEdps = [
-  "04249-01584",
-  "04249-01573",
-  "04249-01633",
-  "04249-01639",
-  "04249-01692",
-];
-const products = newArrivalEdps
-  .map(getProductByEdp)
-  .filter(Boolean)
+const products = computed(() => [...catalogProducts.value]
+  .sort((a, b) => Date.parse(b.publishedAt || 0) - Date.parse(a.publishedAt || 0))
+  .slice(0, 5)
   .map((product) => ({
+    id: product.id,
     edpNumber: product.edpNumber,
     name: product.name,
     category: product.primaryCategory,
@@ -297,13 +297,14 @@ const products = newArrivalEdps
     image: product.image,
     images: product.images,
     href: getProductPath(product),
-  }));
+  })));
 
 function shopLookProduct(edpNumber, x, y, side = "right") {
-  const product = getProductByEdp(edpNumber);
+  const product = catalogProducts.value.find((item) => item.edpNumber === edpNumber);
   if (!product) return null;
 
   return {
+    id: product.id,
     name: product.name,
     edpNumber: product.edpNumber,
     price: formatCartPrice(product.priceValue),
@@ -319,7 +320,7 @@ function shopLookProduct(edpNumber, x, y, side = "right") {
   };
 }
 
-const looks = [
+const looks = computed(() => [
   {
     name: "Living",
     image: "/media/shop-the-look/living-room.jpeg",
@@ -355,7 +356,7 @@ const looks = [
       shopLookProduct("04249-01438", 86, 60, "left"),
     ].filter(Boolean),
   },
-];
+]);
 
 const locations = [
   {
@@ -466,7 +467,7 @@ const cartTotal = computed(() => cartSubtotal(cartItems.value));
 const wishlistSet = ref(new Set());
 
 const activeVideo = computed(() => videos.value[currentVideo.value] || null);
-const activeLook = computed(() => looks[lookIndex.value]);
+const activeLook = computed(() => looks.value[lookIndex.value] || looks.value[0]);
 
 function selectVideo(index) {
   if (!videos.value.length) return;
@@ -826,21 +827,21 @@ function submitDesignerApplication() {
 
 function changeDrawerQuantity(item, amount) {
   setCartQuantity(
-    item.edpNumber,
+    item.id,
     Math.max(1, Math.min(99, item.quantity + amount)),
   );
 }
 
-function removeDrawerItem(edpNumber) {
-  removeCartItem(edpNumber);
+function removeDrawerItem(id) {
+  removeCartItem(id);
 }
 
 function refreshWishlist() {
   wishlistSet.value = new Set(getWishlist());
 }
 
-function updateWishlist(edpNumber) {
-  wishlistSet.value = new Set(toggleWishlist(edpNumber));
+function updateWishlist(id) {
+  wishlistSet.value = new Set(toggleWishlist(id));
 }
 
 onMounted(() => {
@@ -850,6 +851,8 @@ onMounted(() => {
   window.addEventListener(WISHLIST_EVENT, refreshWishlist);
   refreshCart();
   refreshWishlist();
+  if (!isListingPage && !isProductPage) void loadCatalog().catch(() => {});
+  if (productRouteMatch) void loadProductByHandle(decodeURIComponent(productRouteMatch[1])).catch(() => {});
   void loadHeroBanners();
   storedAccounts();
   try {
@@ -974,14 +977,15 @@ onBeforeUnmount(() => {
     >
       <div class="menu-panel__inner">
         <nav aria-label="Product categories">
-          <Accordion v-model:value="activeMenuCategory" class="menu-accordion">
+          <Accordion v-model:value="activeMenuCategory" class="menu-accordion" unstyled>
             <template v-for="category in categories" :key="category.name">
               <AccordionPanel
                 v-if="category.subcategories"
                 :value="category.name"
                 class="menu-category"
+                unstyled
               >
-                <AccordionHeader class="menu-category__trigger">
+                <AccordionHeader class="menu-category__trigger" unstyled>
                   <span class="menu-category__number">{{
                     category.number
                   }}</span>
@@ -990,7 +994,7 @@ onBeforeUnmount(() => {
                     activeMenuCategory === category.name ? "−" : "+"
                   }}</b>
                 </AccordionHeader>
-                <AccordionContent class="menu-category__content">
+                <AccordionContent class="menu-category__content" unstyled>
                   <div class="menu-subcategories">
                     <a
                       :href="category.href"
@@ -1541,14 +1545,14 @@ onBeforeUnmount(() => {
       <div v-if="cartItems.length" class="cart-drawer__items">
         <article
           v-for="item in cartItems"
-          :key="item.edpNumber"
+          :key="item.id"
           class="cart-drawer__item"
         >
-          <a :href="`/product/${encodeURIComponent(item.edpNumber)}`"
+          <a :href="`/product/${encodeURIComponent(item.handle)}`"
             ><img :src="item.image" :alt="item.name"
           /></a>
           <div>
-            <a :href="`/product/${encodeURIComponent(item.edpNumber)}`">{{
+            <a :href="`/product/${encodeURIComponent(item.handle)}`">{{
               item.name
             }}</a>
             <p>{{ formatCartPrice(item.priceValue) }}</p>
@@ -1565,7 +1569,7 @@ onBeforeUnmount(() => {
             class="cart-drawer__remove"
             type="button"
             :aria-label="`Remove ${item.name}`"
-            @click="removeDrawerItem(item.edpNumber)"
+            @click="removeDrawerItem(item.id)"
           >
             ×
           </button>
@@ -1704,16 +1708,16 @@ onBeforeUnmount(() => {
               <button
                 class="wishlist-heart"
                 type="button"
-                :class="{ active: wishlistSet.has(product.edpNumber) }"
+                :class="{ active: wishlistSet.has(product.id) }"
                 :aria-label="
-                  wishlistSet.has(product.edpNumber)
+                  wishlistSet.has(product.id)
                     ? `Remove ${product.name} from wishlist`
                     : `Add ${product.name} to wishlist`
                 "
-                @click="updateWishlist(product.edpNumber)"
+                @click="updateWishlist(product.id)"
               >
                 <span aria-hidden="true">{{
-                  wishlistSet.has(product.edpNumber) ? "♥" : "♡"
+                  wishlistSet.has(product.id) ? "♥" : "♡"
                 }}</span>
               </button>
             </div>
@@ -1736,7 +1740,7 @@ onBeforeUnmount(() => {
           />
           <a
             v-for="(product, index) in activeLook.products"
-            :key="product.edpNumber"
+            :key="product.id"
             class="look-pin"
             :class="`look-pin--${product.side}`"
             :href="product.href"
@@ -1768,7 +1772,7 @@ onBeforeUnmount(() => {
           <ol>
             <li
               v-for="(item, index) in activeLook.products"
-              :key="item.edpNumber"
+              :key="item.id"
             >
               <a :href="item.href">
                 <span>0{{ index + 1 }}</span
@@ -2113,7 +2117,8 @@ onBeforeUnmount(() => {
       :subcategory="listingSubcategory"
       :new-arrivals-page="isNewArrivalsPage"
     />
-    <ProductDetailPage v-else-if="isProductPage" :product="selectedProduct" />
+    <ProductDetailPage v-else-if="isProductPage && selectedProduct" :product="selectedProduct" />
+    <main v-else-if="isProductPage" id="main" class="catalog-page"><section class="catalog-empty"><p class="eyebrow">{{ catalogStatus === 'error' ? 'Catalog unavailable' : 'Loading product' }}</p><h2>{{ catalogStatus === 'error' ? 'We couldn’t load this product.' : 'Gathering the details.' }}</h2><p v-if="catalogStatus === 'error'">{{ catalogError }}</p><button v-if="catalogStatus === 'error'" type="button" @click="loadCatalog({ force: true }).catch(() => {})">Try again</button></section></main>
     <CartPage v-else-if="isCartPage" />
     <CheckoutPage v-else-if="isCheckoutPage" />
     <TestimonialsPage v-else-if="isTestimonialsPage" />

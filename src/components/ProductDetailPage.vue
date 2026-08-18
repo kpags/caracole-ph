@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { addCartItem } from '../data/cart.js'
-import { productCatalog } from '../data/catalog.js'
+import { getProductPath, productKey, useCatalog } from '../data/catalog.js'
 import { getWishlist, toggleWishlist, WISHLIST_EVENT } from '../data/wishlist.js'
 
 const props = defineProps({ product: { type: Object, required: true } })
@@ -25,6 +25,7 @@ const inquiryClose = ref(null)
 const inquiryForm = reactive({ firstName: '', lastName: '', email: '', contactNumber: '', inquiry: '', captchaConfirmed: false })
 const cartToast = ref('')
 let cartToastTimer
+const { products } = useCatalog()
 
 const recommendationMap = {
   'Sofas & Loveseats': ['Sectionals', 'Side & End Tables', 'Center & Cocktail Tables', 'Cocktail Tables', 'Chairs', 'Benches & Ottomans'],
@@ -78,8 +79,8 @@ const reviewAverage = computed(() => (productReviews.value.reduce((sum, review) 
 
 const recommendations = computed(() => {
   const desired = recommendationMap[props.product.subcategory] ?? []
-  const groups = desired.map((subcategory) => productCatalog.filter((candidate) =>
-    candidate.edpNumber !== props.product.edpNumber
+  const groups = desired.map((subcategory) => products.value.filter((candidate) =>
+    productKey(candidate) !== productKey(props.product)
     && candidate.displayCategory === props.product.displayCategory
     && candidate.subcategory === subcategory
     && candidate.image
@@ -95,22 +96,22 @@ const recommendations = computed(() => {
   }
 
   if (selected.length < 5) {
-    const fallback = productCatalog.filter((candidate) =>
-      candidate.edpNumber !== props.product.edpNumber
+    const fallback = products.value.filter((candidate) =>
+      productKey(candidate) !== productKey(props.product)
       && candidate.displayCategory === props.product.displayCategory
       && candidate.subcategory !== '--'
       && candidate.image
-      && !selected.some((item) => item.edpNumber === candidate.edpNumber)
+      && !selected.some((item) => productKey(item) === productKey(candidate))
     )
     selected.push(...fallback.slice(0, 5 - selected.length))
   }
 
   if (selected.length < 5) {
-    const collectionFallback = productCatalog.filter((candidate) =>
-      candidate.edpNumber !== props.product.edpNumber
+    const collectionFallback = products.value.filter((candidate) =>
+      productKey(candidate) !== productKey(props.product)
       && candidate.subcategory !== '--'
       && candidate.image
-      && !selected.some((item) => item.edpNumber === candidate.edpNumber)
+      && !selected.some((item) => productKey(item) === productKey(candidate))
     )
     selected.push(...collectionFallback.slice(0, 5 - selected.length))
   }
@@ -182,12 +183,12 @@ function addToCart() {
 
 function addRecommendation(product) {
   addCartItem(product, 1)
-  recommendedAdded.value = new Set([...recommendedAdded.value, product.edpNumber])
+  recommendedAdded.value = new Set([...recommendedAdded.value, productKey(product)])
   showCartToast(product.name)
 }
 
 function updateWishlist(product) {
-  wishlistSet.value = new Set(toggleWishlist(product.edpNumber))
+  wishlistSet.value = new Set(toggleWishlist(productKey(product)))
 }
 
 function refreshWishlist() {
@@ -361,10 +362,10 @@ onBeforeUnmount(() => {
     <section v-if="recommendations.length" class="related-products" aria-labelledby="related-products-title">
       <header><div><p class="eyebrow">Complete the room</p><h2 id="related-products-title">Frequently Bought Together</h2></div><p>Pieces selected to live beautifully alongside {{ product.name }}.</p></header>
       <div class="related-products__grid">
-        <article v-for="item in recommendations" :key="item.edpNumber" class="related-product-card">
-          <a class="related-product-card__image" :href="`/product/${encodeURIComponent(item.edpNumber)}`"><img :src="item.image" :alt="item.name" loading="lazy" /><i>View product →</i></a>
-          <span class="related-product-card__copy"><small>{{ item.subcategory }}</small><a :href="`/product/${encodeURIComponent(item.edpNumber)}`"><b>{{ item.name }}</b></a><strong>{{ formatRecommendationPrice(item) }}</strong></span>
-          <button class="wishlist-heart related-product-card__wishlist" type="button" :class="{ active: wishlistSet.has(item.edpNumber) }" :aria-label="wishlistSet.has(item.edpNumber) ? `Remove ${item.name} from wishlist` : `Add ${item.name} to wishlist`" @click="updateWishlist(item)"><span aria-hidden="true">{{ wishlistSet.has(item.edpNumber) ? '♥' : '♡' }}</span></button>
+        <article v-for="item in recommendations" :key="productKey(item)" class="related-product-card">
+          <a class="related-product-card__image" :href="getProductPath(item)"><img :src="item.image" :alt="item.name" loading="lazy" /><i>View product →</i></a>
+          <span class="related-product-card__copy"><small>{{ item.subcategory }}</small><a :href="getProductPath(item)"><b>{{ item.name }}</b></a><strong>{{ formatRecommendationPrice(item) }}</strong></span>
+          <button class="wishlist-heart related-product-card__wishlist" type="button" :class="{ active: wishlistSet.has(productKey(item)) }" :aria-label="wishlistSet.has(productKey(item)) ? `Remove ${item.name} from wishlist` : `Add ${item.name} to wishlist`" @click="updateWishlist(item)"><span aria-hidden="true">{{ wishlistSet.has(productKey(item)) ? '♥' : '♡' }}</span></button>
         </article>
       </div>
     </section>
@@ -382,11 +383,11 @@ onBeforeUnmount(() => {
           <button ref="recommendationClose" class="recommendation-modal__close" type="button" aria-label="Close recommendations" @click="closeRecommendations">×</button>
           <header><p class="eyebrow">Complete the room</p><h2 id="recommendation-title">You May Also Like</h2><p>Selected to complement {{ product.name }}.</p></header>
           <div v-if="recommendations.length" class="recommendation-grid">
-            <article v-for="item in recommendations" :key="item.edpNumber" class="recommendation-card">
-              <a :href="`/product/${encodeURIComponent(item.edpNumber)}`" class="recommendation-card__image"><img :src="item.image" :alt="item.name" loading="lazy" /></a>
-              <button class="wishlist-heart recommendation-card__wishlist" type="button" :class="{ active: wishlistSet.has(item.edpNumber) }" :aria-label="wishlistSet.has(item.edpNumber) ? `Remove ${item.name} from wishlist` : `Add ${item.name} to wishlist`" @click="updateWishlist(item)"><span aria-hidden="true">{{ wishlistSet.has(item.edpNumber) ? '♥' : '♡' }}</span></button>
-              <div class="recommendation-card__copy"><p>{{ item.subcategory }}</p><a :href="`/product/${encodeURIComponent(item.edpNumber)}`">{{ item.name }}</a><strong>{{ formatRecommendationPrice(item) }}</strong></div>
-              <button class="recommendation-card__add" type="button" :disabled="recommendedAdded.has(item.edpNumber)" @click="addRecommendation(item)">{{ recommendedAdded.has(item.edpNumber) ? 'Added ✓' : 'Add to cart' }}</button>
+            <article v-for="item in recommendations" :key="productKey(item)" class="recommendation-card">
+              <a :href="getProductPath(item)" class="recommendation-card__image"><img :src="item.image" :alt="item.name" loading="lazy" /></a>
+              <button class="wishlist-heart recommendation-card__wishlist" type="button" :class="{ active: wishlistSet.has(productKey(item)) }" :aria-label="wishlistSet.has(productKey(item)) ? `Remove ${item.name} from wishlist` : `Add ${item.name} to wishlist`" @click="updateWishlist(item)"><span aria-hidden="true">{{ wishlistSet.has(productKey(item)) ? '♥' : '♡' }}</span></button>
+              <div class="recommendation-card__copy"><p>{{ item.subcategory }}</p><a :href="getProductPath(item)">{{ item.name }}</a><strong>{{ formatRecommendationPrice(item) }}</strong></div>
+              <button class="recommendation-card__add" type="button" :disabled="recommendedAdded.has(productKey(item))" @click="addRecommendation(item)">{{ recommendedAdded.has(productKey(item)) ? 'Added ✓' : 'Add to cart' }}</button>
             </article>
           </div>
           <p v-else class="recommendation-empty">Explore more considered pieces from the Caracole collection.</p>

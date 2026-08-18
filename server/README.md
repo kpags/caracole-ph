@@ -8,6 +8,10 @@ Keep `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `DATABASE_URL` con
 
 The `migrate` Compose service waits for PostgreSQL, applies Prisma migrations, then runs `db:seed-system-admin` on every `docker compose up`. When `SEED_SUPERUSER_EMAIL` and `SEED_SUPERUSER_PASSWORD` are configured, it creates the default system administrator only if that email does not already exist; existing accounts are preserved. The API is not started if migrations or the seed step fails.
 
+## Shopify catalog sync
+
+Set `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` from the installed Dev Dashboard app. The scheduler exchanges them for short-lived Admin API tokens and requires the app's `read_products` scope. The `catalog-scheduler` service syncs the full Caracole product mirror at 2:00 AM and 2:00 PM Asia/Manila. Run `npm run shopify:sync-products` from `server/` to trigger the same sync manually. Public catalog requests read the local database and support `page`, `limit`, `category`, `subcategory`, `search`, `inStock`, `minPrice`, `maxPrice`, and `sort`.
+
 Unlayer HTML exports belong in `src/templates/email/signup-otp/template.html` and `src/templates/email/forgot-password-otp/template.html`. Keep the `{{otp}}`, `{{firstName}}`, and `{{appName}}` Handlebars variables in the exported HTML.
 
 Designer registration is `POST /api/v1/auth/register/designer`. It accepts `email`, `password`, and a `designer` object containing `firstName`, `lastName`, `mobileNumber`, `birthdate`, `touchpoint`, and `howDidYouHearAboutUs`; `company`, `officeAddress`, and `companyWebsite` are optional.

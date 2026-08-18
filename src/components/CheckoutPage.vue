@@ -172,7 +172,7 @@ onMounted(() => {
 
       <aside class="checkout-summary">
         <p class="eyebrow">Your selection</p><h2>Order summary</h2>
-        <div class="checkout-summary__items"><article v-for="item in items" :key="item.edpNumber"><img :src="item.image" :alt="item.name" /><div><b>{{ item.name }}</b><small>Quantity {{ item.quantity }}</small></div><strong>{{ formatCartPrice(item.priceValue * item.quantity) }}</strong></article></div>
+        <div class="checkout-summary__items"><article v-for="item in items" :key="item.id"><img :src="item.image" :alt="item.name" /><div><b>{{ item.name }}</b><small>Quantity {{ item.quantity }}</small></div><strong>{{ formatCartPrice(item.priceValue * item.quantity) }}</strong></article></div>
         <dl><div><dt>Subtotal</dt><dd>{{ formatCartPrice(subtotal) }}</dd></div><div><dt>Delivery</dt><dd>{{ shippingFee ? formatCartPrice(shippingFee) : 'Complimentary' }}</dd></div><div><dt>Estimated total</dt><dd>{{ formatCartPrice(total) }}</dd></div></dl>
         <p class="checkout-summary__note">Taxes are included where applicable. Final delivery timing is confirmed after your order is placed.</p>
       </aside>

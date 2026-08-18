@@ -3,7 +3,9 @@ export const CART_EVENT = 'caracole-cart-updated'
 
 function normalizeItem(item) {
   return {
-    edpNumber: String(item.edpNumber ?? ''),
+    id: String(item.id ?? ''),
+    handle: String(item.handle ?? ''),
+    edpNumber: String(item.edpNumber ?? '--'),
     name: String(item.name ?? 'Caracole product'),
     image: item.image ?? null,
     priceValue: Number(item.priceValue) || 0,
@@ -15,14 +17,14 @@ export function getCart() {
   if (typeof window === 'undefined') return []
   try {
     const value = JSON.parse(localStorage.getItem(CART_KEY) || '[]')
-    return Array.isArray(value) ? value.map(normalizeItem).filter((item) => item.edpNumber) : []
+    return Array.isArray(value) ? value.map(normalizeItem).filter((item) => item.id) : []
   } catch {
     return []
   }
 }
 
 export function saveCart(items) {
-  const normalized = items.map(normalizeItem).filter((item) => item.edpNumber)
+  const normalized = items.map(normalizeItem).filter((item) => item.id)
   localStorage.setItem(CART_KEY, JSON.stringify(normalized))
   window.dispatchEvent(new CustomEvent(CART_EVENT, { detail: normalized }))
   return normalized
@@ -30,18 +32,18 @@ export function saveCart(items) {
 
 export function addCartItem(product, quantity = 1) {
   const cart = getCart()
-  const existing = cart.find((item) => item.edpNumber === product.edpNumber)
+  const existing = cart.find((item) => item.id === product.id)
   if (existing) existing.quantity = Math.min(99, existing.quantity + quantity)
   else cart.push(normalizeItem({ ...product, quantity }))
   return saveCart(cart)
 }
 
-export function setCartQuantity(edpNumber, quantity) {
-  return saveCart(getCart().map((item) => item.edpNumber === edpNumber ? { ...item, quantity } : item))
+export function setCartQuantity(id, quantity) {
+  return saveCart(getCart().map((item) => item.id === id ? { ...item, quantity } : item))
 }
 
-export function removeCartItem(edpNumber) {
-  return saveCart(getCart().filter((item) => item.edpNumber !== edpNumber))
+export function removeCartItem(id) {
+  return saveCart(getCart().filter((item) => item.id !== id))
 }
 
 export function cartSubtotal(items) {

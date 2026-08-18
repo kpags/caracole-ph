@@ -25,6 +25,14 @@ export const config = z.object({
   CLOUDFLARE_R2_ACCESS_KEY_ID: z.string().min(1),
   CLOUDFLARE_R2_SECRET_ACCESS_KEY: z.string().min(1),
   CLOUDFLARE_R2_PUBLIC_BASE_URL: z.string().url(),
+  SHOPIFY_STORE_DOMAIN: z.string().min(1),
+  SHOPIFY_STOREFRONT_API_VERSION: z.string().regex(/^\d{4}-\d{2}$/).default('2026-07'),
+  SHOPIFY_PRIVATE_ACCESS_TOKEN: z.string().min(1),
+  SHOPIFY_CLIENT_ID: z.string().min(1),
+  SHOPIFY_CLIENT_SECRET: z.string().min(1),
+  SHOPIFY_VENDOR: z.string().min(1).default('Caracole'),
+  SHOPIFY_PRODUCT_CATEGORY_METAFIELD_NAMESPACE: z.string().min(1).default('custom'),
+  SHOPIFY_PRODUCT_CATEGORY_METAFIELD_KEY: z.string().min(1).default('categories'),
   SEED_SUPERUSER_EMAIL: z.string().email().optional().or(z.literal('')),
   SEED_SUPERUSER_PASSWORD: z.string().min(8).optional().or(z.literal(''))
 }).parse(process.env)

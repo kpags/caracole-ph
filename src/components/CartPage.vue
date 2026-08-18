@@ -10,11 +10,11 @@ function refresh() {
 }
 
 function changeQuantity(item, amount) {
-  setCartQuantity(item.edpNumber, Math.max(1, Math.min(99, item.quantity + amount)))
+  setCartQuantity(item.id, Math.max(1, Math.min(99, item.quantity + amount)))
 }
 
-function removeItem(edpNumber) {
-  removeCartItem(edpNumber)
+function removeItem(id) {
+  removeCartItem(id)
 }
 
 function checkout() {
@@ -40,9 +40,9 @@ onBeforeUnmount(() => {
     <section v-if="items.length" class="cart-layout">
       <div class="cart-table">
         <div class="cart-table__head"><span>Product</span><span>Price</span><span>Quantity</span><span>Total</span></div>
-        <article v-for="item in items" :key="item.edpNumber" class="cart-row">
-          <button class="cart-remove" type="button" :aria-label="`Remove ${item.name}`" @click="removeItem(item.edpNumber)">×</button>
-          <a class="cart-row__product" :href="`/product/${encodeURIComponent(item.edpNumber)}`"><img :src="item.image" :alt="item.name" /><span><b>{{ item.name }}</b><small>EDP {{ item.edpNumber }}</small></span></a>
+        <article v-for="item in items" :key="item.id" class="cart-row">
+          <button class="cart-remove" type="button" :aria-label="`Remove ${item.name}`" @click="removeItem(item.id)">×</button>
+          <a class="cart-row__product" :href="`/product/${encodeURIComponent(item.handle)}`"><img :src="item.image" :alt="item.name" /><span><b>{{ item.name }}</b><small v-if="item.edpNumber !== '--'">EDP {{ item.edpNumber }}</small></span></a>
           <span class="cart-row__price">{{ formatCartPrice(item.priceValue) }}</span>
           <div class="cart-row__quantity"><button type="button" @click="changeQuantity(item, -1)">−</button><span>{{ item.quantity }}</span><button type="button" @click="changeQuantity(item, 1)">+</button></div>
           <strong>{{ formatCartPrice(item.priceValue * item.quantity) }}</strong>
