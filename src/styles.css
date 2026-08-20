@@ -1085,6 +1085,11 @@ body.modal-scroll-lock { overflow: hidden; }
   .shop-the-look-page__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 34px 14px; }
   .shop-look-viewer__media { min-height: 64svh; padding: 0 24px; }
   .shop-look-viewer__image-wrap, .shop-look-viewer__image-wrap > img { max-height: 64svh; }
+  .shop-look-viewer__carousel-control { top: auto; bottom: 20px; }
+  .shop-look-viewer__carousel-control--previous { left: calc(50% - 9px); transform: translateX(-100%); }
+  .shop-look-viewer__carousel-control--next { right: auto; left: calc(50% + 9px); transform: none; }
+  .shop-look-viewer__carousel-control--previous:hover, .shop-look-viewer__carousel-control--previous:focus-visible { transform: translateX(-100%) scale(1.08); }
+  .shop-look-viewer__carousel-control--next:hover, .shop-look-viewer__carousel-control--next:focus-visible { transform: scale(1.08); }
   .shop-look-viewer__products { grid-template-columns: 1fr; gap: 30px; padding: 36px 24px 55px; }
   .header { height: 84px; grid-template-columns: 45px 1fr auto; gap: 8px; padding: 0 17px; }
   .brand { width: 155px; }
