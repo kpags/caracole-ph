@@ -1,6 +1,8 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import "primeicons/primeicons.css";
+import Quill from "quill";
+import "quill/dist/quill.snow.css";
 
 const active = ref("Hero Banners");
 const isAuthenticated = ref(hasStoredAdminSession());
@@ -16,8 +18,9 @@ const formError = ref("");
 const formMessage = ref("");
 const isSubmitting = ref(false);
 const expanded = ref({ Contents: true, Users: false, Inquiries: false });
+const activeContentLink = ref("Hero Banners");
 const orderedGroups = [
-  { title: "Contents", icon: "pi pi-flag", items: ["Hero Banners"] },
+  { title: "Contents", icon: "pi pi-flag", items: ["Hero Banners", "Shop the Look"] },
   { title: "Products", icon: "pi pi-list", items: [] },
   { title: "Appointments", icon: "pi pi-clock", items: [] },
   {
@@ -52,6 +55,58 @@ const isDeletingHeroBanner = ref(false);
 const isDeleteConfirmationOpen = ref(false);
 const draggingHeroBannerId = ref(null);
 const isHeroBannerFormOpen = ref(false);
+const shopTheLookEnvironments = ref([]);
+const shopTheLookProducts = ref([]);
+const shopTheLookProductCache = ref({});
+const isLoadingShopTheLook = ref(false);
+const isSavingShopTheLook = ref(false);
+const isDeletingShopTheLook = ref(false);
+const isShopTheLookEditorOpen = ref(false);
+const isShopTheLookDeleteConfirmationOpen = ref(false);
+const shopTheLookEnvironmentToDelete = ref(null);
+const shopTheLookDeleteError = ref("");
+const shopTheLookToast = ref(null);
+const shopTheLookEditorDialog = ref(null);
+const shopTheLookDeleteDialog = ref(null);
+const heroBannerDeleteDialog = ref(null);
+const editingEnvironmentId = ref(null);
+const shopTheLookForm = ref({ name: "", position: 0 });
+const shopTheLookDescription = ref("");
+const shopTheLookDescriptionEditor = ref(null);
+const shopTheLookImage = ref(null);
+const shopTheLookPreviewUrl = ref("");
+const shopTheLookExistingImageUrl = ref("");
+const shopTheLookImageInput = ref(null);
+const shopTheLookHotspots = ref([]);
+const shopTheLookStatus = ref("");
+const shopTheLookMenu = ref({ open: false, x: 0, y: 0, hotspotId: null, xPercent: 0, yPercent: 0 });
+const movingHotspotId = ref(null);
+const assigningHotspotId = ref(null);
+const selectedHotspotId = ref(null);
+const shopTheLookProductSearch = ref("");
+const shopTheLookZoom = ref(100);
+const shopTheLookImageDimensions = ref({ width: 1920, height: 1080 });
+let shopTheLookQuill = null;
+let shopTheLookToastTimer = null;
+
+const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((position) => ({
+  position,
+  environment: shopTheLookEnvironments.value.find((environment) => environment.position === position) || null,
+})));
+const shopTheLookPreview = computed(() => shopTheLookPreviewUrl.value || shopTheLookExistingImageUrl.value);
+const shopTheLookDescriptionLength = computed(() => getShopTheLookDescriptionText(shopTheLookDescription.value).length);
+const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value);
+const assignedProduct = (hotspot) => shopTheLookProductCache.value[hotspot.productId]
+  || shopTheLookProducts.value.find((product) => (product.recordId || product.id) === hotspot.productId)
+  || null;
+const availableShopTheLookProducts = computed(() => {
+  const assignedIds = new Set(shopTheLookHotspots.value.map((hotspot) => hotspot.productId).filter(Boolean));
+  return shopTheLookProducts.value.filter((product) => !assignedIds.has(product.recordId || product.id));
+});
+const shopTheLookImageStyle = computed(() => ({
+  width: `${Math.round(shopTheLookImageDimensions.value.width * shopTheLookZoom.value / 100)}px`,
+  height: `${Math.round(shopTheLookImageDimensions.value.height * shopTheLookZoom.value / 100)}px`,
+}));
 
 const heroBannerPreview = computed(
   () => heroBannerPreviewUrl.value || heroBannerExistingMedia.value?.mediaUrl || "",
@@ -98,11 +153,20 @@ function select(item) {
     void endSession();
     return;
   }
+  if (item === "Shop the Look") {
+    active.value = "Hero Banners";
+    activeContentLink.value = item;
+    expanded.value.Contents = true;
+    void nextTick(() => document.getElementById("shop-the-look")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    return;
+  }
   active.value = item;
+  activeContentLink.value = item;
 }
 
 function showAdminLanding() {
   active.value = "Hero Banners";
+  activeContentLink.value = "Hero Banners";
   expanded.value.Contents = true;
 }
 
@@ -198,6 +262,40 @@ async function deleteHeroBanner() {
 
 onBeforeUnmount(() => {
   if (heroBannerPreviewUrl.value) URL.revokeObjectURL(heroBannerPreviewUrl.value);
+  if (shopTheLookPreviewUrl.value) URL.revokeObjectURL(shopTheLookPreviewUrl.value);
+  if (shopTheLookToastTimer) window.clearTimeout(shopTheLookToastTimer);
+  document.body.classList.remove("modal-scroll-lock");
+  const appRoot = document.getElementById("app");
+  if (appRoot) appRoot.inert = false;
+});
+
+function trapAdminDialogFocus(event, dialog) {
+  if (event.key !== "Tab" || !dialog) return;
+  const focusable = [...dialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+watch(isAdminModalOpen, async (isOpen) => {
+  const appRoot = document.getElementById("app");
+  document.body.classList.toggle("modal-scroll-lock", isOpen);
+  if (appRoot) appRoot.inert = isOpen;
+  if (!isOpen) return;
+  await nextTick();
+  const dialog = isShopTheLookEditorOpen.value
+    ? shopTheLookEditorDialog.value
+    : isShopTheLookDeleteConfirmationOpen.value
+      ? shopTheLookDeleteDialog.value
+      : heroBannerDeleteDialog.value;
+  dialog?.querySelector("button, input, textarea, select")?.focus();
 });
 const apiBaseUrl = (
   import.meta.env.VITE_API_URL || "http://localhost:3000"
@@ -248,6 +346,314 @@ async function loadHeroBanners() {
     heroBannerStatus.value = error.message;
   } finally {
     isLoadingHeroBanners.value = false;
+  }
+}
+
+async function loadShopTheLook() {
+  isLoadingShopTheLook.value = true;
+  try {
+    const [environmentResponse, productResponse] = await Promise.all([
+      authorizedRequest("/api/v1/shop-the-look"),
+      authorizedRequest("/api/v1/products?limit=100"),
+    ]);
+    shopTheLookEnvironments.value = environmentResponse.environments || [];
+    shopTheLookProducts.value = productResponse.products || [];
+    rememberShopTheLookProducts([...(environmentResponse.products || []), ...shopTheLookProducts.value]);
+  } catch (error) {
+    shopTheLookStatus.value = error.message;
+  } finally {
+    isLoadingShopTheLook.value = false;
+  }
+}
+
+async function loadShopTheLookProducts(search = "") {
+  const query = new URLSearchParams({ limit: "100" });
+  if (search.trim()) query.set("search", search.trim());
+  try {
+    const response = await authorizedRequest(`/api/v1/products?${query}`);
+    shopTheLookProducts.value = response.products || [];
+    rememberShopTheLookProducts(shopTheLookProducts.value);
+  } catch (error) {
+    shopTheLookStatus.value = error.message;
+  }
+}
+
+function showShopTheLookToast(message, type = "success") {
+  if (shopTheLookToastTimer) window.clearTimeout(shopTheLookToastTimer);
+  shopTheLookToast.value = { message, type };
+  shopTheLookToastTimer = window.setTimeout(() => {
+    shopTheLookToast.value = null;
+    shopTheLookToastTimer = null;
+  }, 4200);
+}
+
+function rememberShopTheLookProducts(products) {
+  const remembered = { ...shopTheLookProductCache.value };
+  for (const product of products) {
+    const id = product.recordId || product.id;
+    if (id) remembered[id] = product;
+  }
+  shopTheLookProductCache.value = remembered;
+}
+
+function clearShopTheLookEditor() {
+  editingEnvironmentId.value = null;
+  shopTheLookForm.value = { name: "", position: 0 };
+  shopTheLookDescription.value = "";
+  shopTheLookQuill = null;
+  shopTheLookImage.value = null;
+  if (shopTheLookPreviewUrl.value) URL.revokeObjectURL(shopTheLookPreviewUrl.value);
+  shopTheLookPreviewUrl.value = "";
+  shopTheLookExistingImageUrl.value = "";
+  shopTheLookHotspots.value = [];
+  shopTheLookStatus.value = "";
+  shopTheLookMenu.value.open = false;
+  movingHotspotId.value = null;
+  assigningHotspotId.value = null;
+  shopTheLookProductSearch.value = "";
+  selectedHotspotId.value = null;
+  shopTheLookZoom.value = 100;
+  shopTheLookImageDimensions.value = { width: 1920, height: 1080 };
+  if (shopTheLookImageInput.value) shopTheLookImageInput.value.value = "";
+}
+
+async function openShopTheLookEditor(slot) {
+  clearShopTheLookEditor();
+  shopTheLookForm.value.position = slot.position;
+  if (slot.environment) {
+    editingEnvironmentId.value = slot.environment.id;
+    shopTheLookForm.value.name = slot.environment.name;
+    shopTheLookDescription.value = slot.environment.description || "";
+    shopTheLookExistingImageUrl.value = slot.environment.imageUrl;
+    shopTheLookHotspots.value = [...(slot.environment.hotspots || [])];
+  }
+  isShopTheLookEditorOpen.value = true;
+  await nextTick();
+  initializeShopTheLookDescriptionEditor();
+}
+
+function closeShopTheLookEditor() {
+  clearShopTheLookEditor();
+  isShopTheLookEditorOpen.value = false;
+}
+
+function openShopTheLookDeleteConfirmation(environment) {
+  shopTheLookEnvironmentToDelete.value = environment;
+  shopTheLookDeleteError.value = "";
+  isShopTheLookDeleteConfirmationOpen.value = true;
+}
+
+function closeShopTheLookDeleteConfirmation(force = false) {
+  if (isDeletingShopTheLook.value && !force) return;
+  isShopTheLookDeleteConfirmationOpen.value = false;
+  shopTheLookEnvironmentToDelete.value = null;
+  shopTheLookDeleteError.value = "";
+}
+
+async function deleteShopTheLookEnvironment() {
+  const environment = shopTheLookEnvironmentToDelete.value;
+  if (!environment) return;
+
+  isDeletingShopTheLook.value = true;
+  shopTheLookDeleteError.value = "";
+  try {
+    await authorizedRequest(`/api/v1/shop-the-look/${environment.id}`, { method: "DELETE" });
+    await loadShopTheLook();
+    showShopTheLookToast(`“${environment.name}” was deleted.`, "delete");
+    closeShopTheLookDeleteConfirmation(true);
+  } catch (error) {
+    shopTheLookDeleteError.value = error.message;
+    showShopTheLookToast(error.message, "error");
+  } finally {
+    isDeletingShopTheLook.value = false;
+  }
+}
+
+function openShopTheLookImagePicker() {
+  shopTheLookImageInput.value?.click();
+}
+
+function setShopTheLookImage(event) {
+  const [file] = event.target.files || [];
+  if (!file) return;
+  if (!['image/jpeg', 'image/png'].includes(file.type)) {
+    shopTheLookStatus.value = "Use a JPG, JPEG, or PNG image.";
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  const image = new Image();
+  image.onload = () => {
+    if (image.naturalWidth < 1920 || image.naturalHeight < 1080) {
+      URL.revokeObjectURL(url);
+      shopTheLookStatus.value = "Environment images must be at least 1920 × 1080 pixels.";
+      if (shopTheLookImageInput.value) shopTheLookImageInput.value.value = "";
+      return;
+    }
+    if (shopTheLookPreviewUrl.value) URL.revokeObjectURL(shopTheLookPreviewUrl.value);
+    shopTheLookImage.value = file;
+    shopTheLookPreviewUrl.value = url;
+    shopTheLookExistingImageUrl.value = "";
+    shopTheLookImageDimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
+    shopTheLookStatus.value = "";
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(url);
+    shopTheLookStatus.value = "That image could not be read.";
+  };
+  image.src = url;
+}
+
+function updateShopTheLookImageDimensions(event) {
+  const image = event.target;
+  if (image.naturalWidth && image.naturalHeight) {
+    shopTheLookImageDimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
+  }
+}
+
+function adjustShopTheLookZoom(amount) {
+  shopTheLookZoom.value = Math.max(50, Math.min(100, shopTheLookZoom.value + amount));
+}
+
+function getShopTheLookDescriptionText(value) {
+  return value.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function initializeShopTheLookDescriptionEditor() {
+  if (!shopTheLookDescriptionEditor.value) return;
+  shopTheLookQuill = new Quill(shopTheLookDescriptionEditor.value, {
+    theme: "snow",
+    formats: ["header", "bold", "italic", "underline", "strike", "blockquote"],
+    modules: {
+      toolbar: [[{ header: [2, 3, false] }], ["bold", "italic", "underline", "strike"], ["blockquote"], ["clean"]],
+    },
+  });
+  shopTheLookQuill.root.innerHTML = shopTheLookDescription.value || "";
+  shopTheLookQuill.root.addEventListener("paste", (event) => {
+    const html = event.clipboardData?.getData("text/html") || "";
+    if (!/<\s*(?:a|img)\b/i.test(html)) return;
+    event.preventDefault();
+    const text = event.clipboardData?.getData("text/plain") || "";
+    if (text) shopTheLookQuill.insertText(shopTheLookQuill.getSelection()?.index ?? shopTheLookQuill.getLength(), text, "user");
+  });
+  shopTheLookQuill.on("text-change", () => {
+    const html = shopTheLookQuill.root.innerHTML;
+    shopTheLookDescription.value = html === "<p><br></p>" ? "" : html;
+  });
+}
+
+function removeShopTheLookImage() {
+  shopTheLookImage.value = null;
+  if (shopTheLookPreviewUrl.value) URL.revokeObjectURL(shopTheLookPreviewUrl.value);
+  shopTheLookPreviewUrl.value = "";
+  shopTheLookExistingImageUrl.value = "";
+  shopTheLookStatus.value = "Choose a replacement image before saving this environment.";
+  if (shopTheLookImageInput.value) shopTheLookImageInput.value.value = "";
+}
+
+function getImagePoint(event) {
+  const image = event.currentTarget.querySelector(".shop-look-editor__image");
+  const rect = image?.getBoundingClientRect();
+  if (!rect) return { x: 50, y: 50 };
+  return {
+    x: Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)),
+    y: Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100)),
+  };
+}
+
+function openShopTheLookMenu(event, hotspot = null) {
+  const point = getImagePoint(event);
+  shopTheLookMenu.value = {
+    open: true,
+    x: Math.min(event.clientX, window.innerWidth - 220),
+    y: Math.min(event.clientY, window.innerHeight - 150),
+    hotspotId: hotspot?.id || null,
+    xPercent: point.x,
+    yPercent: point.y,
+  };
+  selectedHotspotId.value = hotspot?.id || null;
+}
+
+function addShopTheLookHotspot() {
+  const { xPercent, yPercent } = shopTheLookMenu.value;
+  shopTheLookHotspots.value.push({ id: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`, x: xPercent, y: yPercent, productId: null });
+  selectedHotspotId.value = shopTheLookHotspots.value.at(-1).id;
+  shopTheLookMenu.value.open = false;
+}
+
+function prepareHotspotMove() {
+  movingHotspotId.value = shopTheLookMenu.value.hotspotId;
+  shopTheLookMenu.value.open = false;
+  shopTheLookStatus.value = "Click a new position on the image to move this hotspot.";
+}
+
+function moveHotspotFromImage(event) {
+  if (!movingHotspotId.value) {
+    shopTheLookMenu.value.open = false;
+    return;
+  }
+  const point = getImagePoint(event);
+  shopTheLookHotspots.value = shopTheLookHotspots.value.map((hotspot) => hotspot.id === movingHotspotId.value ? { ...hotspot, x: point.x, y: point.y } : hotspot);
+  selectedHotspotId.value = movingHotspotId.value;
+  movingHotspotId.value = null;
+  shopTheLookStatus.value = "";
+}
+
+function removeShopTheLookHotspot(id) {
+  shopTheLookHotspots.value = shopTheLookHotspots.value.filter((hotspot) => hotspot.id !== id);
+  selectedHotspotId.value = null;
+  assigningHotspotId.value = null;
+  shopTheLookMenu.value.open = false;
+}
+
+function assignShopTheLookProduct(hotspot, productId) {
+  const product = shopTheLookProducts.value.find((item) => (item.recordId || item.id) === productId);
+  if (product) rememberShopTheLookProducts([product]);
+  shopTheLookHotspots.value = shopTheLookHotspots.value.map((item) => item.id === hotspot.id ? { ...item, productId: productId || null } : item);
+  assigningHotspotId.value = null;
+}
+
+function openProductAssignment(hotspotId) {
+  assigningHotspotId.value = assigningHotspotId.value === hotspotId ? null : hotspotId;
+  shopTheLookProductSearch.value = "";
+  if (assigningHotspotId.value) void loadShopTheLookProducts();
+}
+
+async function saveShopTheLook() {
+  if (!shopTheLookForm.value.name.trim()) {
+    shopTheLookStatus.value = "Enter an environment name.";
+    return;
+  }
+  if (shopTheLookDescriptionLength.value === 0 || shopTheLookDescriptionLength.value > 200) {
+    shopTheLookStatus.value = "Enter an environment description of up to 200 characters.";
+    return;
+  }
+  if (!shopTheLookPreview.value) {
+    shopTheLookStatus.value = "Upload an environment image at least 1920 × 1080 pixels before saving.";
+    return;
+  }
+  isSavingShopTheLook.value = true;
+  shopTheLookStatus.value = "";
+  const action = editingEnvironmentId.value ? "updated" : "saved";
+  const environmentName = shopTheLookForm.value.name.trim();
+  try {
+    const body = new FormData();
+    body.append("name", shopTheLookForm.value.name.trim());
+    body.append("description", shopTheLookDescription.value);
+    body.append("position", String(shopTheLookForm.value.position));
+    body.append("hotspots", JSON.stringify(shopTheLookHotspots.value));
+    if (shopTheLookImage.value) body.append("image", shopTheLookImage.value);
+    await authorizedRequest(editingEnvironmentId.value ? `/api/v1/shop-the-look/${editingEnvironmentId.value}` : "/api/v1/shop-the-look", {
+      method: editingEnvironmentId.value ? "PATCH" : "POST",
+      body,
+    });
+    closeShopTheLookEditor();
+    await loadShopTheLook();
+    showShopTheLookToast(`“${environmentName}” was ${action}.`, "success");
+  } catch (error) {
+    shopTheLookStatus.value = error.message;
+    showShopTheLookToast(error.message, "error");
+  } finally {
+    isSavingShopTheLook.value = false;
   }
 }
 
@@ -348,7 +754,7 @@ async function refreshAdminSession() {
 onMounted(async () => {
   if (isAuthenticated.value) {
     await refreshAdminSession();
-    if (isAuthenticated.value) await loadHeroBanners();
+    if (isAuthenticated.value) await Promise.all([loadHeroBanners(), loadShopTheLook()]);
   }
 });
 
@@ -371,7 +777,7 @@ async function submitLogin() {
     );
     showAdminLanding();
     isAuthenticated.value = true;
-    await loadHeroBanners();
+    await Promise.all([loadHeroBanners(), loadShopTheLook()]);
   } catch (error) {
     formError.value = error.message;
   } finally {
@@ -634,7 +1040,7 @@ function showLogin() {
               v-for="item in group.items"
               :key="item"
               type="button"
-              :class="{ 'is-current': active === item }"
+              :class="{ 'is-current': activeContentLink === item }"
               @click="select(item)"
             >
               {{ item }}
@@ -814,9 +1220,186 @@ function showLogin() {
             </template>
           </section>
 
-          <Transition name="admin-dialog-fade">
-            <div v-if="isDeleteConfirmationOpen" class="admin-confirmation" role="presentation" @click.self="isDeleteConfirmationOpen = false">
-              <section class="admin-confirmation__dialog" role="dialog" aria-modal="true" aria-labelledby="delete-hero-banner-title">
+          <section id="shop-the-look" class="admin-shop-look" aria-labelledby="shop-the-look-title">
+            <header class="admin-shop-look__heading">
+              <div>
+                <h2 id="shop-the-look-title">Shop the Look</h2>
+                <p>Create up to 10 environments and place product hotspots on each scene.</p>
+              </div>
+              <strong>{{ shopTheLookEnvironments.length }} / 10 <span>environments used</span></strong>
+            </header>
+
+            <p v-if="isLoadingShopTheLook" class="admin-shop-look__loading">Loading environments…</p>
+            <div v-else class="admin-shop-look__slots">
+              <article v-for="slot in shopTheLookSlots" :key="slot.position" class="admin-shop-look-slot" :class="{ 'admin-shop-look-slot--empty': !slot.environment }">
+                <div class="admin-shop-look-slot__number">{{ String(slot.position + 1).padStart(2, '0') }}</div>
+                <div class="admin-shop-look-slot__preview">
+                  <img v-if="slot.environment" :src="slot.environment.imageUrl" :alt="slot.environment.name" />
+                  <i v-else class="pi pi-image" aria-hidden="true"></i>
+                </div>
+                <div class="admin-shop-look-slot__copy">
+                  <h3>{{ slot.environment?.name || 'Empty environment' }}</h3>
+                  <p v-if="slot.environment">{{ slot.environment.hotspots?.length || 0 }} hotspot{{ slot.environment.hotspots?.length === 1 ? '' : 's' }} assigned</p>
+                  <p v-else>Upload an environment image and link its products.</p>
+                </div>
+                <div v-if="slot.environment" class="admin-shop-look-slot__actions">
+                  <button type="button" @click="openShopTheLookEditor(slot)">Edit</button>
+                  <button class="admin-shop-look-slot__delete" type="button" @click="openShopTheLookDeleteConfirmation(slot.environment)">Delete</button>
+                </div>
+                <button v-else type="button" @click="openShopTheLookEditor(slot)">Create</button>
+              </article>
+            </div>
+          </section>
+
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="isShopTheLookEditorOpen" class="shop-look-editor-backdrop" role="presentation" @click.self="closeShopTheLookEditor">
+                <section ref="shopTheLookEditorDialog" class="shop-look-editor" role="dialog" aria-modal="true" aria-labelledby="shop-look-editor-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, shopTheLookEditorDialog)">
+                  <header class="shop-look-editor__head">
+                    <div>
+                      <p class="admin-eyebrow">Shop the Look / Environment {{ shopTheLookForm.position + 1 }}</p>
+                      <h2 id="shop-look-editor-title">{{ editingEnvironmentId ? 'Edit Environment' : 'Create Environment' }}</h2>
+                      <span>Create a scene and assign products to the hotspots.</span>
+                    </div>
+                    <div>
+                      <button type="button" @click="closeShopTheLookEditor">Cancel</button>
+                      <button class="shop-look-editor__save" type="button" :disabled="isSavingShopTheLook" @click="saveShopTheLook">{{ isSavingShopTheLook ? 'Saving…' : 'Save Environment' }}</button>
+                    </div>
+                  </header>
+
+                  <div class="shop-look-editor__fields">
+                    <label>
+                      <span>Environment Name</span>
+                      <input v-model="shopTheLookForm.name" maxlength="120" placeholder="e.g. Warm Living Room" />
+                    </label>
+                    <div class="shop-look-editor__upload">
+                      <span>Environment Image</span>
+                      <input ref="shopTheLookImageInput" type="file" accept="image/jpeg,image/png" @change="setShopTheLookImage" />
+                      <div v-if="shopTheLookPreview" class="shop-look-editor__file">
+                        <i class="pi pi-image" aria-hidden="true"></i>
+                        <strong>{{ shopTheLookImage?.name || 'Current environment image' }}</strong>
+                        <button type="button" @click="openShopTheLookImagePicker">Replace</button>
+                        <button class="shop-look-editor__trash" type="button" aria-label="Remove environment image" @click="removeShopTheLookImage"><i class="pi pi-trash" aria-hidden="true"></i></button>
+                      </div>
+                      <button v-else class="shop-look-editor__upload-empty" type="button" @click="openShopTheLookImagePicker"><i class="pi pi-image" aria-hidden="true"></i><span>Upload image</span></button>
+                      <small>Minimum 1920 × 1080 pixels, JPG, JPEG, or PNG.</small>
+                    </div>
+                  </div>
+
+                  <p v-if="shopTheLookStatus" class="shop-look-editor__status" role="status">{{ shopTheLookStatus }}</p>
+
+                  <div class="shop-look-editor__workspace">
+                    <div class="shop-look-editor__canvas-panel">
+                      <div class="shop-look-editor__canvas-toolbar">
+                        <span>{{ movingHotspotId ? 'Choose a new hotspot position' : 'Right-click the image to add a hotspot' }}</span>
+                        <div><button type="button" :disabled="shopTheLookZoom <= 50" aria-label="Zoom out" @click="adjustShopTheLookZoom(-10)"><i class="pi pi-minus" aria-hidden="true"></i></button><b>{{ shopTheLookZoom }}%</b><button type="button" :disabled="shopTheLookZoom >= 100" aria-label="Zoom in" @click="adjustShopTheLookZoom(10)"><i class="pi pi-plus" aria-hidden="true"></i></button></div>
+                      </div>
+                      <div class="shop-look-editor__canvas-wrap">
+                      <div v-if="shopTheLookPreview" class="shop-look-editor__canvas" :class="{ 'is-moving': movingHotspotId }" @click="moveHotspotFromImage" @contextmenu.prevent="openShopTheLookMenu($event)">
+                        <img class="shop-look-editor__image" :src="shopTheLookPreview" :style="shopTheLookImageStyle" alt="Environment hotspot canvas" draggable="false" @load="updateShopTheLookImageDimensions" />
+                        <button v-for="(hotspot, index) in shopTheLookHotspots" :key="hotspot.id" class="shop-look-hotspot" :class="{ 'is-selected': selectedHotspotId === hotspot.id, 'is-assigned': Boolean(hotspot.productId) }" type="button" :style="{ left: `${hotspot.x}%`, top: `${hotspot.y}%` }" :aria-label="`Hotspot ${index + 1}`" @click.stop="selectedHotspotId = hotspot.id" @contextmenu.stop.prevent="openShopTheLookMenu($event, hotspot)">{{ index + 1 }}</button>
+                      </div>
+                      <div v-else class="shop-look-editor__canvas-empty"><i class="pi pi-image" aria-hidden="true"></i><p>Upload an image at least 1920 × 1080 pixels to start placing hotspots.</p></div>
+                      </div>
+                    </div>
+                    <aside class="shop-look-editor__hotspots" aria-label="Hotspots and product assignments">
+                      <header><h3>Hotspots &amp; Product Assignment</h3><p>Right-click the image to add, edit, or remove a hotspot.</p></header>
+                      <div v-if="shopTheLookHotspots.length" class="shop-look-editor__hotspot-list">
+                        <article v-for="(hotspot, index) in shopTheLookHotspots" :key="hotspot.id" :class="{ 'is-selected': selectedHotspotId === hotspot.id }" @click="selectedHotspotId = hotspot.id">
+                          <b>{{ index + 1 }}</b>
+                          <div>
+                            <strong>{{ assignedProduct(hotspot)?.name || 'No product assigned' }}</strong>
+                            <small v-if="assignedProduct(hotspot)">{{ assignedProduct(hotspot).edpNumber || assignedProduct(hotspot).handle }}</small>
+                          </div>
+                          <button type="button" @click.stop="openProductAssignment(hotspot.id)">{{ assignedProduct(hotspot) ? 'Change Product' : 'Assign Product' }}</button>
+                          <button class="shop-look-editor__remove-hotspot" type="button" :aria-label="`Remove hotspot ${index + 1}`" @click.stop="removeShopTheLookHotspot(hotspot.id)"><i class="pi pi-times" aria-hidden="true"></i></button>
+                          <div v-if="assigningHotspotId === hotspot.id" class="shop-look-editor__product-picker">
+                            <div class="shop-look-editor__product-dropdown">
+                              <button class="shop-look-editor__product-trigger" type="button" @click.stop="openProductAssignment(hotspot.id)">
+                                <span>{{ assignedProduct(hotspot)?.name || 'Choose a product' }}</span>
+                                <i class="pi pi-chevron-up" aria-hidden="true"></i>
+                              </button>
+                              <div class="shop-look-editor__product-menu" @click.stop>
+                                <label class="shop-look-editor__product-search">
+                                  <i class="pi pi-search" aria-hidden="true"></i>
+                                  <input v-model="shopTheLookProductSearch" type="search" placeholder="Search products" autofocus @input="loadShopTheLookProducts(shopTheLookProductSearch)" />
+                                  <button v-if="shopTheLookProductSearch" type="button" aria-label="Clear product search" @click="shopTheLookProductSearch = ''; loadShopTheLookProducts()"><i class="pi pi-times" aria-hidden="true"></i></button>
+                                </label>
+                                <div class="shop-look-editor__product-options" role="listbox" aria-label="Products">
+                                  <button class="shop-look-editor__product-option" :class="{ 'is-selected': !hotspot.productId }" type="button" role="option" :aria-selected="!hotspot.productId" @click="assignShopTheLookProduct(hotspot, '')">
+                                    <span class="shop-look-editor__product-placeholder"><i class="pi pi-ban" aria-hidden="true"></i></span>
+                                    <span><strong>No product assigned</strong><small>Remove the current assignment</small></span>
+                                  </button>
+                                  <button v-for="product in availableShopTheLookProducts" :key="product.recordId || product.id" class="shop-look-editor__product-option" type="button" role="option" :aria-selected="false" @click="assignShopTheLookProduct(hotspot, product.recordId || product.id)">
+                                    <img v-if="product.image" :src="product.image" alt="" />
+                                    <span v-else class="shop-look-editor__product-placeholder"><i class="pi pi-image" aria-hidden="true"></i></span>
+                                    <span><strong>{{ product.name }}</strong><small>EDP {{ product.edpNumber || '--' }}</small></span>
+                                  </button>
+                                  <p v-if="!availableShopTheLookProducts.length">No available products match this search.</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+                      <div v-else class="shop-look-editor__hotspots-empty"><i class="pi pi-map-marker" aria-hidden="true"></i><p>No hotspots yet.</p><small>Right-click anywhere on the image and choose Add Hotspot.</small></div>
+                    </aside>
+                  </div>
+
+                  <section class="shop-look-editor__description" aria-labelledby="shop-look-description-title">
+                    <header>
+                      <div>
+                        <h3 id="shop-look-description-title">Environment Description</h3>
+                        <p>Write the customer-facing description for this environment.</p>
+                      </div>
+                      <strong :class="{ 'is-valid': shopTheLookDescriptionLength > 0 && shopTheLookDescriptionLength <= 200 }">{{ shopTheLookDescriptionLength }} / 200 characters</strong>
+                    </header>
+                    <div ref="shopTheLookDescriptionEditor" class="shop-look-editor__description-editor"></div>
+                    <small>Up to 200 characters. Formatting is supported; images and links are not allowed.</small>
+                  </section>
+                </section>
+
+                <div v-if="shopTheLookMenu.open" class="shop-look-context-menu" :style="{ left: `${shopTheLookMenu.x}px`, top: `${shopTheLookMenu.y}px` }" @click.stop>
+                  <button v-if="!shopTheLookMenu.hotspotId" type="button" @click="addShopTheLookHotspot"><i class="pi pi-plus" aria-hidden="true"></i> Add Hotspot {{ shopTheLookHotspots.length + 1 }}</button>
+                  <template v-else>
+                    <button type="button" @click="prepareHotspotMove"><i class="pi pi-pencil" aria-hidden="true"></i> Edit Hotspot</button>
+                    <button type="button" @click="removeShopTheLookHotspot(shopTheLookMenu.hotspotId)"><i class="pi pi-trash" aria-hidden="true"></i> Remove Hotspot</button>
+                  </template>
+                </div>
+              </div>
+            </Transition>
+          </Teleport>
+
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="isShopTheLookDeleteConfirmationOpen" class="admin-confirmation" role="presentation" @click.self="closeShopTheLookDeleteConfirmation">
+                <section ref="shopTheLookDeleteDialog" class="admin-confirmation__dialog" role="dialog" aria-modal="true" aria-labelledby="delete-environment-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, shopTheLookDeleteDialog)">
+                <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+                <h2 id="delete-environment-title">Delete Environment?</h2>
+                <p>“{{ shopTheLookEnvironmentToDelete?.name }}” and its uploaded image will be permanently removed. This slot will become available again.</p>
+                <p v-if="shopTheLookDeleteError" class="admin-confirmation__error" role="alert">{{ shopTheLookDeleteError }}</p>
+                <div>
+                  <button type="button" :disabled="isDeletingShopTheLook" @click="closeShopTheLookDeleteConfirmation">Cancel</button>
+                  <button type="button" :disabled="isDeletingShopTheLook" @click="deleteShopTheLookEnvironment">{{ isDeletingShopTheLook ? 'Deleting…' : 'Delete Environment' }}</button>
+                </div>
+                </section>
+              </div>
+            </Transition>
+          </Teleport>
+
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="shopTheLookToast" class="admin-shop-look-toast" :class="`admin-shop-look-toast--${shopTheLookToast.type}`" role="status">
+                <i :class="shopTheLookToast.type === 'success' ? 'pi pi-check-circle' : 'pi pi-exclamation-circle'" aria-hidden="true"></i>
+                <span>{{ shopTheLookToast.message }}</span>
+              </div>
+            </Transition>
+          </Teleport>
+
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="isDeleteConfirmationOpen" class="admin-confirmation" role="presentation" @click.self="isDeleteConfirmationOpen = false">
+                <section ref="heroBannerDeleteDialog" class="admin-confirmation__dialog" role="dialog" aria-modal="true" aria-labelledby="delete-hero-banner-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, heroBannerDeleteDialog)">
                 <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
                 <h2 id="delete-hero-banner-title">Delete Hero Banner?</h2>
                 <p>This permanently removes the banner and its uploaded media. The original placeholder will appear in this position.</p>
@@ -824,9 +1407,10 @@ function showLogin() {
                   <button type="button" :disabled="isDeletingHeroBanner" @click="isDeleteConfirmationOpen = false">Cancel</button>
                   <button type="button" :disabled="isDeletingHeroBanner" @click="deleteHeroBanner">{{ isDeletingHeroBanner ? 'Deleting...' : 'Delete Banner' }}</button>
                 </div>
-              </section>
-            </div>
-          </Transition>
+                </section>
+              </div>
+            </Transition>
+          </Teleport>
         </template>
         <div v-else class="admin-placeholder">Hello World</div>
       </section>

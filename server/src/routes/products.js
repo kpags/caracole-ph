@@ -12,7 +12,7 @@ const listQuery = z.object({
 
 function serializeProduct(product) {
   const images = Array.isArray(product.images) ? product.images : []
-  return { id: product.shopifyId, handle: product.handle, name: product.title, edpNumber: product.sku || '--', articleNumber: product.sku || '--', description: product.description,
+  return { id: product.shopifyId, recordId: product.id, handle: product.handle, name: product.title, edpNumber: product.sku || '--', articleNumber: product.sku || '--', description: product.description,
     finish: product.metafields?.['custom.finish']?.value || '--', size: product.metafields?.['custom.size']?.value || '--', categories: product.mainCategory ? [product.mainCategory] : [], primaryCategory: product.mainCategory, displayCategory: product.mainCategory,
     subcategory: product.subcategory || '--', series: product.metafields?.['custom.series']?.value || product.productType || '--', price: product.price ? `${product.currencyCode || 'PHP'} ${product.price}` : '--', priceValue: product.price ? Number(product.price) : 0, currencyCode: product.currencyCode || 'PHP',
     createdAt: product.shopifyCreatedAt, updatedAt: product.shopifyUpdatedAt, publishedAt: product.publishedAt, arrivalDate: product.publishedAt, isNewArrival: true, isActive: product.isActive, isComingSoon: false,

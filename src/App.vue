@@ -110,9 +110,13 @@ const listingSubcategory = listingCategory
   : "";
 const isListingPage = Boolean(listingCategory || isNewArrivalsPage);
 const isProductPage = Boolean(productRouteMatch);
+const isShopTheLookPage =
+  typeof window !== "undefined" &&
+  /^\/shop-the-look\/?$/.test(window.location.pathname);
 const homeLink = (anchor = "") =>
   isListingPage ||
   isProductPage ||
+  isShopTheLookPage ||
   isCartPage ||
   isCheckoutPage ||
   isCheckoutReviewPage ||
@@ -299,64 +303,60 @@ const products = computed(() => [...catalogProducts.value]
     href: getProductPath(product),
   })));
 
-function shopLookProduct(edpNumber, x, y, side = "right") {
-  const product = catalogProducts.value.find((item) => item.edpNumber === edpNumber);
-  if (!product) return null;
+const shopTheLookEnvironments = ref([]);
+const shopTheLookProducts = ref([]);
+const shopTheLookEnvironmentCount = ref(0);
+const isLoadingShopTheLook = ref(false);
 
-  return {
-    id: product.id,
-    name: product.name,
-    edpNumber: product.edpNumber,
-    price: formatCartPrice(product.priceValue),
-    category: product.displayCategory,
-    subcategory:
-      product.subcategory && product.subcategory !== "--"
-        ? product.subcategory
-        : "",
-    href: getProductPath(product),
-    x,
-    y,
-    side,
-  };
+const allShopTheLooks = computed(() => {
+  const productsById = new Map(shopTheLookProducts.value.map((product) => [product.id, product]));
+
+  return shopTheLookEnvironments.value.slice(0, 10).map((environment) => ({
+    id: environment.id,
+    name: environment.name,
+    image: environment.imageUrl,
+    description: environment.description,
+    products: (environment.hotspots || []).map((hotspot) => {
+      const product = productsById.get(hotspot.productId);
+      if (!product) return null;
+      return {
+        id: `${environment.id}-${hotspot.id}`,
+        name: product.name,
+        edpNumber: product.edpNumber,
+        image: product.image,
+        price: product.price ? formatCartPrice(Number(product.price)) : "Price on request",
+        category: product.category,
+        subcategory: product.subcategory,
+        href: `/product/${encodeURIComponent(product.handle)}`,
+        x: hotspot.x,
+        y: hotspot.y,
+        side: hotspot.x > 58 ? "left" : "right",
+      };
+    }).filter(Boolean),
+  }));
+});
+
+const looks = computed(() => allShopTheLooks.value.slice(0, 3));
+
+async function loadShopTheLookEnvironments() {
+  isLoadingShopTheLook.value = true;
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/shop-the-look/public`);
+    if (!response.ok) throw new Error("Shop the Look is unavailable");
+    const payload = await response.json();
+    shopTheLookEnvironments.value = payload.environments || [];
+    shopTheLookProducts.value = payload.products || [];
+    shopTheLookEnvironmentCount.value = payload.totalEnvironments || shopTheLookEnvironments.value.length;
+    lookIndex.value = 0;
+  } catch (error) {
+    console.warn("Unable to load Shop the Look", error);
+    shopTheLookEnvironments.value = [];
+    shopTheLookProducts.value = [];
+    shopTheLookEnvironmentCount.value = 0;
+  } finally {
+    isLoadingShopTheLook.value = false;
+  }
 }
-
-const looks = computed(() => [
-  {
-    name: "Living",
-    image: "/media/shop-the-look/living-room.jpeg",
-    caption: "Soft geometry",
-    copy: "Curves, warm metal and grounded neutrals create a room that feels collected rather than decorated.",
-    products: [
-      shopLookProduct("04249-01550", 38, 64),
-      shopLookProduct("04249-00460", 66, 34, "left"),
-      shopLookProduct("09656-00466", 54, 73, "left"),
-      shopLookProduct("04249-01476", 69, 59, "left"),
-    ].filter(Boolean),
-  },
-  {
-    name: "Dining",
-    image: "/media/shop-the-look/dining-room.jpeg",
-    caption: "The art of gathering",
-    copy: "Architectural forms and lustrous finishes turn dinner into a beautifully considered ritual.",
-    products: [
-      shopLookProduct("04249-01398", 51, 64, "left"),
-      shopLookProduct("09656-00450", 25, 68),
-      shopLookProduct("04249-00460", 16, 31),
-      shopLookProduct("04249-01016", 16, 53),
-    ].filter(Boolean),
-  },
-  {
-    name: "Bedroom",
-    image: "/media/shop-the-look/bedroom.jpeg",
-    caption: "A study in serenity",
-    copy: "Layered texture and graceful scale shape a retreat that is both restorative and unmistakably yours.",
-    products: [
-      shopLookProduct("04249-01632", 20, 69),
-      shopLookProduct("04249-01324", 51, 57, "left"),
-      shopLookProduct("04249-01438", 86, 60, "left"),
-    ].filter(Boolean),
-  },
-]);
 
 const locations = [
   {
@@ -398,6 +398,16 @@ const newsletterSent = ref(false);
 const email = ref("");
 const locationImageIndexes = ref(locations.map(() => 0));
 const locationTimers = new Map();
+const lookMediaViewport = ref(null);
+const lookImageDimensions = ref({ width: 1920, height: 1080 });
+const lookCanvasDimensions = ref({ width: 1920, height: 1080 });
+const lookPan = ref({ active: false, moved: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
+const isLookProductsDialogOpen = ref(false);
+const lookProductsDialog = ref(null);
+const selectedShopTheLook = ref(null);
+const shopTheLookViewer = ref(null);
+const shopTheLookHover = ref({ productId: null, source: null });
+const shopTheLookProductPreview = ref(null);
 const categoryImageIndexes = ref(categories.map(() => 0));
 const categoryTimers = new Map();
 const accountView = ref(null);
@@ -468,6 +478,10 @@ const wishlistSet = ref(new Set());
 
 const activeVideo = computed(() => videos.value[currentVideo.value] || null);
 const activeLook = computed(() => looks.value[lookIndex.value] || looks.value[0]);
+const activeLookImageStyle = computed(() => ({
+  width: `${lookCanvasDimensions.value.width}px`,
+  height: `${lookCanvasDimensions.value.height}px`,
+}));
 
 function selectVideo(index) {
   if (!videos.value.length) return;
@@ -477,6 +491,179 @@ function selectVideo(index) {
 
 function nextVideo() {
   selectVideo(currentVideo.value + 1);
+}
+
+function selectLook(index) {
+  lookIndex.value = index;
+  lookImageDimensions.value = { width: 1920, height: 1080 };
+  lookCanvasDimensions.value = { width: 1920, height: 1080 };
+  lookPan.value.moved = false;
+  void nextTick(() => {
+    if (lookMediaViewport.value) {
+      lookMediaViewport.value.scrollLeft = 0;
+      lookMediaViewport.value.scrollTop = 0;
+    }
+  });
+}
+
+function updateLookImageDimensions(event) {
+  const image = event.target;
+  if (image.naturalWidth && image.naturalHeight) {
+    lookImageDimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
+    void nextTick(fitLookCanvasToViewport);
+  }
+}
+
+function fitLookCanvasToViewport() {
+  const viewport = lookMediaViewport.value;
+  if (!viewport) return;
+  const { width, height } = lookImageDimensions.value;
+  const scale = Math.max(viewport.clientWidth / width, viewport.clientHeight / height);
+  lookCanvasDimensions.value = {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+  };
+}
+
+function startLookPan(event) {
+  if (event.button !== 0 || event.target.closest(".look-pin")) return;
+  const viewport = lookMediaViewport.value;
+  if (!viewport) return;
+  lookPan.value = {
+    active: true,
+    moved: false,
+    startX: event.clientX,
+    startY: event.clientY,
+    scrollLeft: viewport.scrollLeft,
+    scrollTop: viewport.scrollTop,
+  };
+  viewport.setPointerCapture?.(event.pointerId);
+}
+
+function moveLookPan(event) {
+  if (!lookPan.value.active || !lookMediaViewport.value) return;
+  const deltaX = event.clientX - lookPan.value.startX;
+  const deltaY = event.clientY - lookPan.value.startY;
+  if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) lookPan.value.moved = true;
+  lookMediaViewport.value.scrollLeft = lookPan.value.scrollLeft - deltaX;
+  lookMediaViewport.value.scrollTop = lookPan.value.scrollTop - deltaY;
+}
+
+function stopLookPan(event) {
+  const moved = lookPan.value.moved;
+  if (lookPan.value.active) event.currentTarget.releasePointerCapture?.(event.pointerId);
+  lookPan.value.active = false;
+  if (moved) window.setTimeout(() => { lookPan.value.moved = false; }, 0);
+}
+
+function preventPinClickAfterPan(event) {
+  if (!lookPan.value.moved) return;
+  event.preventDefault();
+  lookPan.value.moved = false;
+}
+
+function closeLookProductsDialog() {
+  isLookProductsDialogOpen.value = false;
+}
+
+function openLookProductsDialog() {
+  isLookProductsDialogOpen.value = true;
+}
+
+function trapLookProductsDialogFocus(event) {
+  if (event.key !== "Tab" || !lookProductsDialog.value) return;
+  const focusable = [...lookProductsDialog.value.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function openShopTheLookEnvironment(environment) {
+  selectedShopTheLook.value = environment;
+}
+
+function closeShopTheLookEnvironment() {
+  selectedShopTheLook.value = null;
+  shopTheLookHover.value = { productId: null, source: null };
+}
+
+function browseShopTheLookEnvironment(direction) {
+  const environments = allShopTheLooks.value;
+  if (environments.length < 2 || !selectedShopTheLook.value) return;
+  const currentIndex = environments.findIndex((environment) => environment.id === selectedShopTheLook.value.id);
+  const nextIndex = (Math.max(currentIndex, 0) + direction + environments.length) % environments.length;
+  selectedShopTheLook.value = environments[nextIndex];
+  clearShopTheLookHover();
+}
+
+function setShopTheLookHover(productId, source) {
+  shopTheLookHover.value = { productId, source };
+  if (source === "pin") void nextTick(updateShopTheLookProductPreview);
+  else shopTheLookProductPreview.value = null;
+}
+
+function clearShopTheLookHover() {
+  shopTheLookHover.value = { productId: null, source: null };
+  shopTheLookProductPreview.value = null;
+}
+
+function updateShopTheLookProductPreview() {
+  const { productId, source } = shopTheLookHover.value;
+  if (source !== "pin" || !productId || !selectedShopTheLook.value) {
+    shopTheLookProductPreview.value = null;
+    return;
+  }
+  const productRow = [...document.querySelectorAll("[data-shop-look-product]")]
+    .find((element) => element.dataset.shopLookProduct === productId);
+  const product = selectedShopTheLook.value.products.find((item) => item.id === productId);
+  if (!productRow || !product) {
+    shopTheLookProductPreview.value = null;
+    return;
+  }
+  const bounds = productRow.getBoundingClientRect();
+  const isVisible = bounds.bottom > 20 && bounds.top < window.innerHeight - 20;
+  const previewWidth = Math.min(390, window.innerWidth - 40);
+  const horizontalPosition = Math.max(
+    20,
+    Math.min(window.innerWidth - previewWidth - 20, bounds.left),
+  );
+  shopTheLookProductPreview.value = isVisible ? null : { product, horizontalPosition };
+}
+
+function handleShopTheLookViewerScroll() {
+  updateShopTheLookProductPreview();
+}
+
+function trapShopTheLookViewerFocus(event) {
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    browseShopTheLookEnvironment(-1);
+    return;
+  }
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    browseShopTheLookEnvironment(1);
+    return;
+  }
+  if (event.key !== "Tab" || !shopTheLookViewer.value) return;
+  const focusable = [...shopTheLookViewer.value.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function updateProgress(event) {
@@ -560,6 +747,18 @@ watch(currentVideo, async () => {
   videoEl.value?.play().catch(() => {});
 });
 
+watch([isLookProductsDialogOpen, selectedShopTheLook], async ([isProductsDialogOpen, selectedLook]) => {
+  const isOpen = isProductsDialogOpen || Boolean(selectedLook);
+  const appRoot = document.getElementById("app");
+  document.body.classList.toggle("modal-scroll-lock", isOpen);
+  if (appRoot) appRoot.inert = isOpen;
+  if (isOpen) {
+    await nextTick();
+    if (selectedLook) shopTheLookViewer.value?.querySelector("button")?.focus();
+    else lookProductsDialog.value?.querySelector("button")?.focus();
+  }
+});
+
 function handleKey(event) {
   if (event.key === "Escape") {
     closeMenu();
@@ -568,6 +767,8 @@ function handleKey(event) {
     closeDesigner();
     closeServiceModal();
     closeSearch();
+    closeLookProductsDialog();
+    closeShopTheLookEnvironment();
   }
 }
 
@@ -849,11 +1050,13 @@ onMounted(() => {
   window.addEventListener(CART_EVENT, refreshCart);
   window.addEventListener("storage", refreshCart);
   window.addEventListener(WISHLIST_EVENT, refreshWishlist);
+  window.addEventListener("resize", fitLookCanvasToViewport);
   refreshCart();
   refreshWishlist();
   if (!isListingPage && !isProductPage) void loadCatalog().catch(() => {});
   if (productRouteMatch) void loadProductByHandle(decodeURIComponent(productRouteMatch[1])).catch(() => {});
   void loadHeroBanners();
+  void loadShopTheLookEnvironments();
   storedAccounts();
   try {
     currentUser.value = JSON.parse(
@@ -868,10 +1071,14 @@ onBeforeUnmount(() => {
   window.removeEventListener(CART_EVENT, refreshCart);
   window.removeEventListener("storage", refreshCart);
   window.removeEventListener(WISHLIST_EVENT, refreshWishlist);
+  window.removeEventListener("resize", fitLookCanvasToViewport);
   locationTimers.forEach((timer) => window.clearInterval(timer));
   locationTimers.clear();
   categoryTimers.forEach((timer) => window.clearInterval(timer));
   categoryTimers.clear();
+  document.body.classList.remove("modal-scroll-lock");
+  const appRoot = document.getElementById("app");
+  if (appRoot) appRoot.inert = false;
 });
 </script>
 
@@ -885,6 +1092,7 @@ onBeforeUnmount(() => {
         'menu-active': menuOpen,
         'header--light':
           isNewArrivalsPage ||
+          isShopTheLookPage ||
           isProductPage ||
           isCartPage ||
           isCheckoutPage ||
@@ -1597,6 +1805,7 @@ onBeforeUnmount(() => {
       v-if="
         !isListingPage &&
         !isProductPage &&
+        !isShopTheLookPage &&
         !isCartPage &&
         !isCheckoutPage &&
         !isCheckoutReviewPage &&
@@ -1731,47 +1940,55 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section id="look" class="look-section">
-        <div class="look-media">
-          <img
-            :key="activeLook.image"
-            :src="activeLook.image"
-            :alt="`${activeLook.name} room styled with Caracole furniture`"
-          />
-          <a
-            v-for="(product, index) in activeLook.products"
-            :key="product.id"
-            class="look-pin"
-            :class="`look-pin--${product.side}`"
-            :href="product.href"
-            :style="{ left: `${product.x}%`, top: `${product.y}%` }"
-            :aria-label="`View ${product.name}`"
-          >
-            <span class="look-pin__dot" aria-hidden="true">{{
-              String(index + 1).padStart(2, "0")
-            }}</span>
-            <span class="look-pin__card">
-              <small
-                >{{ product.category
-                }}<template v-if="product.subcategory">
-                  · {{ product.subcategory }}</template
-                ></small
-              >
-              <strong>{{ product.name }}</strong>
-              <span>EDP {{ product.edpNumber }}</span>
-              <b>{{ product.price }}</b>
-              <em>View product <span>↗</span></em>
-            </span>
-          </a>
-          <div class="look-label">Styled by Caracole Philippines</div>
+      <section v-if="activeLook" id="look" class="look-section">
+        <div class="look-media-frame">
+          <div ref="lookMediaViewport" class="look-media" :class="{ 'is-panning': lookPan.active }" @pointerdown="startLookPan" @pointermove="moveLookPan" @pointerup="stopLookPan" @pointercancel="stopLookPan">
+            <div class="look-media__canvas">
+            <img
+              :key="activeLook.image"
+              :src="activeLook.image"
+              :style="activeLookImageStyle"
+              :alt="`${activeLook.name} room styled with Caracole furniture`"
+              draggable="false"
+              @load="updateLookImageDimensions"
+            />
+            <a
+              v-for="(product, index) in activeLook.products"
+              :key="product.id"
+              class="look-pin"
+              :class="`look-pin--${product.side}`"
+              :href="product.href"
+              :style="{ left: `${product.x}%`, top: `${product.y}%` }"
+              :aria-label="`View ${product.name}`"
+              @click="preventPinClickAfterPan"
+            >
+              <span class="look-pin__dot" aria-hidden="true">{{
+                String(index + 1).padStart(2, "0")
+              }}</span>
+              <span class="look-pin__card">
+                <small
+                  >{{ product.category
+                  }}<template v-if="product.subcategory">
+                    · {{ product.subcategory }}</template
+                  ></small
+                >
+                <strong>{{ product.name }}</strong>
+                <span>EDP {{ product.edpNumber }}</span>
+                <b>{{ product.price }}</b>
+                <em>View product <span>↗</span></em>
+              </span>
+            </a>
+            </div>
+          </div>
+          <span class="look-drag-hint"><i class="pi pi-arrows-alt" aria-hidden="true"></i> Hold and drag to explore the image</span>
         </div>
         <div class="look-copy">
           <p class="eyebrow">Shop the Look</p>
-          <h2>{{ activeLook.caption }}</h2>
-          <p>{{ activeLook.copy }}</p>
+          <h2>{{ activeLook.name }}</h2>
+          <div class="look-copy__description" v-html="activeLook.description"></div>
           <ol>
             <li
-              v-for="(item, index) in activeLook.products"
+              v-for="(item, index) in activeLook.products.slice(0, 4)"
               :key="item.id"
             >
               <a :href="item.href">
@@ -1779,6 +1996,9 @@ onBeforeUnmount(() => {
                 ><b>{{ item.name }}</b
                 ><i>Explore ↗</i>
               </a>
+            </li>
+            <li v-if="activeLook.products.length > 4" class="look-copy__more-products">
+              <button type="button" @click="openLookProductsDialog">See More Products <span>↗</span></button>
             </li>
           </ol>
           <div class="look-tabs" role="tablist" aria-label="Shop by room">
@@ -1789,13 +2009,35 @@ onBeforeUnmount(() => {
               role="tab"
               :aria-selected="lookIndex === index"
               :class="{ active: lookIndex === index }"
-              @click="lookIndex = index"
+              @click="selectLook(index)"
             >
               {{ look.name }}
             </button>
+            <a v-if="shopTheLookEnvironmentCount > 3" href="/shop-the-look" class="look-tabs__explore-more">Explore More <span>↗</span></a>
           </div>
         </div>
       </section>
+
+      <Teleport to="body">
+        <Transition name="admin-dialog-fade">
+          <div v-if="isLookProductsDialogOpen && activeLook" class="look-products-dialog-backdrop" role="presentation" @click.self="closeLookProductsDialog">
+            <section ref="lookProductsDialog" class="look-products-dialog" role="dialog" aria-modal="true" aria-labelledby="look-products-dialog-title" tabindex="-1" @keydown="trapLookProductsDialogFocus">
+              <header>
+                <div><p class="eyebrow">Shop the Look</p><h2 id="look-products-dialog-title">{{ activeLook.name }}</h2></div>
+                <button type="button" aria-label="Close products" @click="closeLookProductsDialog"><i class="pi pi-times" aria-hidden="true"></i></button>
+              </header>
+              <div class="look-products-dialog__list">
+                <a v-for="product in activeLook.products" :key="product.id" :href="product.href" @click="closeLookProductsDialog">
+                  <img v-if="product.image" :src="product.image" :alt="product.name" />
+                  <span v-else class="look-products-dialog__image-placeholder"><i class="pi pi-image" aria-hidden="true"></i></span>
+                  <span><small>EDP {{ product.edpNumber }}</small><strong>{{ product.name }}</strong></span>
+                  <i class="pi pi-arrow-up-right" aria-hidden="true"></i>
+                </a>
+              </div>
+            </section>
+          </div>
+        </Transition>
+      </Teleport>
 
       <section class="collections section-pad">
         <div class="section-heading section-heading--collections">
@@ -2117,6 +2359,27 @@ onBeforeUnmount(() => {
       :subcategory="listingSubcategory"
       :new-arrivals-page="isNewArrivalsPage"
     />
+    <main v-else-if="isShopTheLookPage" id="main" class="shop-the-look-page">
+      <header class="shop-the-look-page__intro">
+        <p class="eyebrow">Shop the Look</p>
+        <h1>Spaces, composed.</h1>
+        <p>Explore the environments created to bring Caracole pieces together in one considered view.</p>
+      </header>
+      <section class="shop-the-look-page__grid" aria-label="Shop the Look environments">
+        <button
+          v-for="environment in allShopTheLooks"
+          :key="environment.id"
+          class="shop-the-look-page__card"
+          type="button"
+          @click="openShopTheLookEnvironment(environment)"
+        >
+          <span class="shop-the-look-page__image"><img :src="environment.image" :alt="environment.name" /></span>
+          <h2>{{ environment.name }}</h2>
+        </button>
+      </section>
+      <p v-if="isLoadingShopTheLook" class="shop-the-look-page__status">Loading environments…</p>
+      <p v-else-if="!shopTheLookEnvironments.length" class="shop-the-look-page__status">No environments are available yet.</p>
+    </main>
     <ProductDetailPage v-else-if="isProductPage && selectedProduct" :product="selectedProduct" />
     <main v-else-if="isProductPage" id="main" class="catalog-page"><section class="catalog-empty"><p class="eyebrow">{{ catalogStatus === 'error' ? 'Catalog unavailable' : 'Loading product' }}</p><h2>{{ catalogStatus === 'error' ? 'We couldn’t load this product.' : 'Gathering the details.' }}</h2><p v-if="catalogStatus === 'error'">{{ catalogError }}</p><button v-if="catalogStatus === 'error'" type="button" @click="loadCatalog({ force: true }).catch(() => {})">Try again</button></section></main>
     <CartPage v-else-if="isCartPage" />
@@ -2130,6 +2393,44 @@ onBeforeUnmount(() => {
       :designer="selectedDesigner"
     />
     <CheckoutReviewPage v-else />
+
+    <Teleport to="body">
+      <Transition name="shop-look-viewer">
+        <div v-if="selectedShopTheLook" class="shop-look-viewer-backdrop" role="presentation" @scroll.passive="handleShopTheLookViewerScroll" @click.self="closeShopTheLookEnvironment">
+          <section ref="shopTheLookViewer" class="shop-look-viewer" role="dialog" aria-modal="true" :aria-label="`${selectedShopTheLook.name} environment`" tabindex="-1" @keydown="trapShopTheLookViewerFocus">
+            <button class="shop-look-viewer__close" type="button" aria-label="Close environment" @click="closeShopTheLookEnvironment"><i class="pi pi-times" aria-hidden="true"></i></button>
+            <div class="shop-look-viewer__media">
+              <button v-if="allShopTheLooks.length > 1" class="shop-look-viewer__carousel-control shop-look-viewer__carousel-control--previous" type="button" aria-label="Show previous environment" @click="browseShopTheLookEnvironment(-1)"><i class="pi pi-arrow-left" aria-hidden="true"></i></button>
+              <div :key="selectedShopTheLook.id" class="shop-look-viewer__image-wrap">
+                <img :src="selectedShopTheLook.image" :alt="`${selectedShopTheLook.name} room styled with Caracole furniture`" />
+                <a v-for="(product, index) in selectedShopTheLook.products" :key="product.id" class="shop-look-viewer__pin" :class="{ 'is-pin-highlighted': shopTheLookHover.productId === product.id && shopTheLookHover.source === 'pin', 'is-product-highlighted': shopTheLookHover.productId === product.id && shopTheLookHover.source === 'product' }" :href="product.href" :style="{ left: `${product.x}%`, top: `${product.y}%` }" :aria-label="`View ${product.name}`" @mouseenter="setShopTheLookHover(product.id, 'pin')" @mouseleave="clearShopTheLookHover" @focus="setShopTheLookHover(product.id, 'pin')" @blur="clearShopTheLookHover">{{ String(index + 1).padStart(2, '0') }}</a>
+              </div>
+              <button v-if="allShopTheLooks.length > 1" class="shop-look-viewer__carousel-control shop-look-viewer__carousel-control--next" type="button" aria-label="Show next environment" @click="browseShopTheLookEnvironment(1)"><i class="pi pi-arrow-right" aria-hidden="true"></i></button>
+            </div>
+            <section class="shop-look-viewer__products" aria-label="Products in this environment">
+              <div><p class="eyebrow">Shop the Look</p><h2>{{ selectedShopTheLook.name }}</h2><div v-if="selectedShopTheLook.description" class="shop-look-viewer__description" v-html="selectedShopTheLook.description"></div></div>
+              <div class="shop-look-viewer__product-list">
+                <a v-for="(product, index) in selectedShopTheLook.products" :key="product.id" :data-shop-look-product="product.id" :href="product.href" :class="{ 'is-highlighted': shopTheLookHover.productId === product.id }" @mouseenter="setShopTheLookHover(product.id, 'product')" @mouseleave="clearShopTheLookHover" @focus="setShopTheLookHover(product.id, 'product')" @blur="clearShopTheLookHover">
+                  <span>{{ String(index + 1).padStart(2, '0') }}</span>
+                  <img v-if="product.image" :src="product.image" :alt="product.name" />
+                  <span v-else class="shop-look-viewer__product-placeholder"><i class="pi pi-image" aria-hidden="true"></i></span>
+                  <strong><small>EDP {{ product.edpNumber }}</small>{{ product.name }}</strong><i class="pi pi-arrow-up-right" aria-hidden="true"></i>
+                </a>
+                <p v-if="!selectedShopTheLook.products.length" class="shop-look-viewer__empty">No products have been assigned to this environment yet.</p>
+              </div>
+            </section>
+          </section>
+          <Transition name="shop-look-preview">
+            <a v-if="shopTheLookProductPreview" class="shop-look-viewer__product-preview" :style="{ left: `${shopTheLookProductPreview.horizontalPosition}px` }" :href="shopTheLookProductPreview.product.href">
+              <img v-if="shopTheLookProductPreview.product.image" :src="shopTheLookProductPreview.product.image" :alt="shopTheLookProductPreview.product.name" />
+              <span v-else class="shop-look-viewer__product-placeholder"><i class="pi pi-image" aria-hidden="true"></i></span>
+              <span><small>EDP {{ shopTheLookProductPreview.product.edpNumber }}</small><strong>{{ shopTheLookProductPreview.product.name }}</strong></span>
+              <i class="pi pi-arrow-down" aria-hidden="true"></i>
+            </a>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
 
     <footer class="footer">
       <div class="footer-brand">
@@ -2150,8 +2451,7 @@ onBeforeUnmount(() => {
           ><a href="/designers">Designers</a
           ><a href="/testimonials">Testimonials</a
           ><a href="/wishlist">Wishlist</a
-          ><a href="https://caracole.ph/projects">Voice of Design</a
-          ><a href="https://caracole.ph/catalogs">Catalogues</a
+          ><a href="/shop-the-look">Shop the Look</a
           ><button type="button" @click="openServiceModal('appointment')">
             Book an Appointment</button
           ><button type="button" @click="openServiceModal('contact')">
