@@ -1,5 +1,7 @@
 import { parseProductCategory } from './shopify-products.js'
 import { createShopifyAdminTokenProvider } from './shopify-admin-token.js'
+import { normalizeDisplayMetafieldValue } from './shopify-metafield-normalization.js'
+import { extractShopifyProductAttributeValues, shopifyProductAttributeDefinitions } from './shopify-product-attributes.js'
 
 const ADMIN_PRODUCTS_QUERY = `#graphql
   query AdminProducts($after: String, $query: String!) {
@@ -30,18 +32,24 @@ const PRODUCT_METAFIELDS_QUERY = `#graphql
 function toDate(value) { return value ? new Date(value) : null }
 
 function metafieldRecord(metafields) {
-  return Object.fromEntries(metafields.map((field) => [`${field.namespace}.${field.key}`, {
-    id: field.id, namespace: field.namespace, key: field.key, type: field.type, value: field.value,
+  return Object.fromEntries(metafields.map((field) => {
+    const key = `${field.namespace}.${field.key}`
+    return [key, {
+    id: field.id, namespace: field.namespace, key: field.key, type: field.type, value: normalizeDisplayMetafieldValue(key, field.value),
     jsonValue: field.jsonValue, description: field.description, referenceType: field.reference?.__typename || null,
-  }]))
+  }]
+  }))
 }
 
 function productData(product) {
   const metafields = metafieldRecord(product.metafields.nodes)
+  const attributes = extractShopifyProductAttributeValues(metafields)
+  for (const attribute of shopifyProductAttributeDefinitions) delete metafields[attribute.metafieldKey]
   const category = parseProductCategory(metafields['custom.categories']?.value)
   const selectedVariant = product.variants.nodes.find((variant) => variant.availableForSale) || product.variants.nodes[0] || null
   const images = product.images.nodes
   return {
+    attributes,
     shopifyId: product.id,
     handle: product.handle,
     vendor: product.vendor,
@@ -74,6 +82,24 @@ function productData(product) {
     isActive: product.status === 'ACTIVE',
     lastSyncedAt: new Date(),
   }
+}
+
+async function syncProductAttributeValues(prisma, productId, attributeRecords, values) {
+  const valueByKey = new Map(values.map((value) => [value.key, value.value]))
+  const removedAttributeIds = [...attributeRecords.values()]
+    .filter((attribute) => !valueByKey.has(attribute.key))
+    .map((attribute) => attribute.id)
+  if (removedAttributeIds.length) {
+    await prisma.productAttributeValue.deleteMany({ where: { productId, attributeId: { in: removedAttributeIds } } })
+  }
+  await Promise.all([...valueByKey].map(([key, value]) => {
+    const attribute = attributeRecords.get(key)
+    return prisma.productAttributeValue.upsert({
+      where: { productId_attributeId: { productId, attributeId: attribute.id } },
+      create: { productId, attributeId: attribute.id, value },
+      update: { value }
+    })
+  }))
 }
 
 async function requestAdmin(config, tokenProvider, query, variables) {
@@ -110,6 +136,13 @@ export async function syncShopifyProducts({ prisma, config, tokenProvider = crea
   let createdCount = 0
   let updatedCount = 0
   try {
+    const attributeRecords = new Map((await Promise.all(shopifyProductAttributeDefinitions.map((attribute) =>
+      prisma.attribute.upsert({
+        where: { key: attribute.key },
+        create: { key: attribute.key, name: attribute.name },
+        update: { name: attribute.name }
+      })
+    ))).map((attribute) => [attribute.key, attribute]))
     let after = null
     do {
       const data = await requestAdmin(config, tokenProvider, ADMIN_PRODUCTS_QUERY, { after, query: `vendor:${config.SHOPIFY_VENDOR}` })
@@ -117,9 +150,10 @@ export async function syncShopifyProducts({ prisma, config, tokenProvider = crea
       if (!connection) throw new Error('Shopify returned an invalid products response')
       for (const shopifyProduct of connection.nodes) {
         shopifyProduct.metafields.nodes = await loadAllMetafields({ config, tokenProvider, product: shopifyProduct })
-        const data = productData(shopifyProduct)
+        const { attributes, ...data } = productData(shopifyProduct)
         const existing = await prisma.product.findUnique({ where: { shopifyId: data.shopifyId }, select: { id: true } })
-        await prisma.product.upsert({ where: { shopifyId: data.shopifyId }, create: data, update: data })
+        const product = await prisma.product.upsert({ where: { shopifyId: data.shopifyId }, create: data, update: data })
+        await syncProductAttributeValues(prisma, product.id, attributeRecords, attributes)
         if (existing) updatedCount += 1
         else createdCount += 1
         fetchedCount += 1

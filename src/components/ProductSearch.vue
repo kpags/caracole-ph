@@ -13,7 +13,7 @@ const { products, status, error, load } = useCatalog()
 
 function searchableText(product) {
   return [
-    product.edpNumber, product.articleNumber, product.name, product.finish, product.size,
+    product.edpNumber, product.articleNumber, product.name, ...(product.attributes || []).map((attribute) => attribute.value),
     ...(Array.isArray(product.categories) ? product.categories : []),
     product.primaryCategory, product.displayCategory, product.subcategory, product.series,
   ].filter(Boolean).join(' ').toLowerCase()

@@ -12,6 +12,12 @@ enum OtpPurpose {
   PASSWORD_RESET
 }
 
+enum DesignerReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -24,6 +30,7 @@ model User {
   isActive          Boolean        @default(true) @map("is_active")
   isEmailVerified   Boolean        @default(false) @map("is_email_verified")
   designer          Designer?
+  reviewedDesigners Designer[]      @relation("DesignerReviewedBy")
   refreshTokens     RefreshToken[]
   otpCodes          OtpCode[]
 
@@ -44,7 +51,11 @@ model Designer {
   companyWebsite String? @map("company_website")
   touchpoint   String
   howDidYouHearAboutUs String @map("how_did_you_hear_about_us")
+  reviewStatus  DesignerReviewStatus @default(PENDING) @map("review_status")
+  reviewedAt    DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  reviewedById  String?   @map("reviewed_by_id") @db.Uuid
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?     @relation("DesignerReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@map("designers")
 }
@@ -135,6 +146,7 @@ model Product {
   variants          Json     @default("[]")
   media             Json     @default("[]")
   metafields        Json     @default("{}")
+  attributeValues   ProductAttributeValue[]
   shopifyData       Json     @map("shopify_data")
   shopifyCreatedAt  DateTime? @map("shopify_created_at") @db.Timestamptz(6)
   shopifyUpdatedAt  DateTime? @map("shopify_updated_at") @db.Timestamptz(6)
@@ -148,6 +160,32 @@ model Product {
   @@index([isActive, subcategory])
   @@index([isActive, publishedAt])
   @@map("products")
+}
+
+model Attribute {
+  id              String                  @id @default(uuid()) @db.Uuid
+  key             String                  @unique @db.VarChar(80)
+  name            String                  @unique @db.VarChar(120)
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  productValues   ProductAttributeValue[]
+
+  @@map("attributes")
+}
+
+model ProductAttributeValue {
+  id          String    @id @default(uuid()) @db.Uuid
+  productId   String    @map("product_id") @db.Uuid
+  attributeId String    @map("attribute_id") @db.Uuid
+  value       String
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute   Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, attributeId])
+  @@index([attributeId])
+  @@map("product_attribute_values")
 }
 
 model CatalogSyncRun {

@@ -1,10 +1,14 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import "primeicons/primeicons.css";
+import DataTable from "primevue/datatable";
+import Column from "primevue/column";
 import Quill from "quill";
 import "quill/dist/quill.snow.css";
 
-const active = ref("Hero Banners");
+const ADMIN_VIEW_STORAGE_KEY = "caracole-admin-view";
+const storedAdminView = getStoredAdminView();
+const active = ref(storedAdminView.active);
 const isAuthenticated = ref(hasStoredAdminSession());
 const isForgotPassword = ref(false);
 const email = ref("");
@@ -17,8 +21,8 @@ const confirmPassword = ref("");
 const formError = ref("");
 const formMessage = ref("");
 const isSubmitting = ref(false);
-const expanded = ref({ Contents: true, Users: false, Inquiries: false });
-const activeContentLink = ref("Hero Banners");
+const expanded = ref(storedAdminView.expanded);
+const activeContentLink = ref(storedAdminView.activeContentLink);
 const orderedGroups = [
   { title: "Contents", icon: "pi pi-flag", items: ["Hero Banners", "Shop the Look"] },
   { title: "Products", icon: "pi pi-list", items: [] },
@@ -86,8 +90,32 @@ const selectedHotspotId = ref(null);
 const shopTheLookProductSearch = ref("");
 const shopTheLookZoom = ref(100);
 const shopTheLookImageDimensions = ref({ width: 1920, height: 1080 });
+const adminProducts = ref([]);
+const adminProductFilters = ref({ search: "", category: "", subcategory: "", series: "", minPrice: "", maxPrice: "" });
+const adminProductFilterOptions = ref({ categories: [], subcategories: [], series: [] });
+const adminProductPagination = ref({ page: 1, limit: 10, totalItems: 0, totalPages: 0 });
+const isLoadingAdminProducts = ref(false);
+const adminProductsError = ref("");
+const selectedAdminProduct = ref(null);
+const isAdminProductDetailsOpen = ref(false);
+const adminProductDialog = ref(null);
+const adminUsers = ref([]);
+const adminUserSearch = ref("");
+const adminUserRole = ref("");
+const isLoadingAdminUsers = ref(false);
+const designers = ref([]);
+const isLoadingDesigners = ref(false);
+const usersError = ref("");
+const selectedDesigner = ref(null);
+const isDesignerDetailsOpen = ref(false);
+const isDesignerReviewOpen = ref(false);
+const isSavingDesignerReview = ref(false);
+const designerDetailsDialog = ref(null);
+const designerReviewDialog = ref(null);
 let shopTheLookQuill = null;
 let shopTheLookToastTimer = null;
+let adminProductSearchTimer = null;
+let adminUserSearchTimer = null;
 
 const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((position) => ({
   position,
@@ -95,7 +123,7 @@ const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((posi
 })));
 const shopTheLookPreview = computed(() => shopTheLookPreviewUrl.value || shopTheLookExistingImageUrl.value);
 const shopTheLookDescriptionLength = computed(() => getShopTheLookDescriptionText(shopTheLookDescription.value).length);
-const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value);
+const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value || isAdminProductDetailsOpen.value || isDesignerDetailsOpen.value || isDesignerReviewOpen.value);
 const assignedProduct = (hotspot) => shopTheLookProductCache.value[hotspot.productId]
   || shopTheLookProducts.value.find((product) => (product.recordId || product.id) === hotspot.productId)
   || null;
@@ -130,6 +158,28 @@ const activeGroup = computed(() =>
       group.title === active.value || group.items.includes(active.value),
   ),
 );
+const adminTopbarTitle = computed(() =>
+  activeGroup.value?.items.length ? activeGroup.value.title : active.value,
+);
+const currentAdminEmail = computed(() => {
+  try {
+    return JSON.parse(sessionStorage.getItem("caracole-admin-user") || "{}").email?.toLocaleLowerCase() || "";
+  } catch {
+    return "";
+  }
+});
+
+function getStoredAdminView() {
+  const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Users: false, Inquiries: false } };
+  try {
+    const value = JSON.parse(sessionStorage.getItem(ADMIN_VIEW_STORAGE_KEY) || "null");
+    const allowedItems = ["Hero Banners", "Shop the Look", "Products", "Appointments", "General", "Product", "Newsletter", "Admin", "Designers", "Customers"];
+    if (!value || !allowedItems.includes(value.active) || !allowedItems.includes(value.activeContentLink)) return fallback;
+    return { active: value.active, activeContentLink: value.activeContentLink, expanded: { ...fallback.expanded, ...(value.expanded || {}) } };
+  } catch {
+    return fallback;
+  }
+}
 
 function hasStoredAdminSession() {
   const accessToken = sessionStorage.getItem("caracole-admin-access-token");
@@ -162,6 +212,11 @@ function select(item) {
   }
   active.value = item;
   activeContentLink.value = item;
+  if (["Hero Banners", "Shop the Look"].includes(item)) expanded.value.Contents = true;
+  if (["Admin", "Designers", "Customers"].includes(item)) expanded.value.Users = true;
+  if (item === "Products") void loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
+  if (item === "Admin") void loadAdminUsers();
+  if (item === "Designers") void loadDesigners();
 }
 
 function showAdminLanding() {
@@ -173,6 +228,21 @@ function showAdminLanding() {
 function toggle(group) {
   expanded.value[group.title] = !expanded.value[group.title];
 }
+
+function selectGroup(group) {
+  if (group.title === "Users") {
+    expanded.value.Users = true;
+    select("Admin");
+    return;
+  }
+  if (group.items.length) toggle(group);
+  else select(group.title);
+}
+
+watch([active, activeContentLink, expanded], () => {
+  if (!isAuthenticated.value) return;
+  sessionStorage.setItem(ADMIN_VIEW_STORAGE_KEY, JSON.stringify({ active: active.value, activeContentLink: activeContentLink.value, expanded: expanded.value }));
+}, { deep: true });
 
 function openMediaPicker() {
   heroBannerInput.value?.click();
@@ -264,6 +334,8 @@ onBeforeUnmount(() => {
   if (heroBannerPreviewUrl.value) URL.revokeObjectURL(heroBannerPreviewUrl.value);
   if (shopTheLookPreviewUrl.value) URL.revokeObjectURL(shopTheLookPreviewUrl.value);
   if (shopTheLookToastTimer) window.clearTimeout(shopTheLookToastTimer);
+  if (adminProductSearchTimer) window.clearTimeout(adminProductSearchTimer);
+  if (adminUserSearchTimer) window.clearTimeout(adminUserSearchTimer);
   document.body.classList.remove("modal-scroll-lock");
   const appRoot = document.getElementById("app");
   if (appRoot) appRoot.inert = false;
@@ -294,7 +366,13 @@ watch(isAdminModalOpen, async (isOpen) => {
     ? shopTheLookEditorDialog.value
     : isShopTheLookDeleteConfirmationOpen.value
       ? shopTheLookDeleteDialog.value
-      : heroBannerDeleteDialog.value;
+      : isAdminProductDetailsOpen.value
+        ? adminProductDialog.value
+        : isDesignerDetailsOpen.value
+          ? designerDetailsDialog.value
+          : isDesignerReviewOpen.value
+            ? designerReviewDialog.value
+            : heroBannerDeleteDialog.value;
   dialog?.querySelector("button, input, textarea, select")?.focus();
 });
 const apiBaseUrl = (
@@ -330,7 +408,7 @@ async function authorizedRequest(path, { method = "GET", body } = {}) {
   });
   const responseBody = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(responseBody.message || "Unable to update hero banners.");
+    const error = new Error(responseBody.message || "Unable to complete this request.");
     error.status = response.status;
     throw error;
   }
@@ -376,6 +454,153 @@ async function loadShopTheLookProducts(search = "") {
   } catch (error) {
     shopTheLookStatus.value = error.message;
   }
+}
+
+function buildAdminProductsQuery(page = 1) {
+  const query = new URLSearchParams({ page: String(page), limit: "10" });
+  for (const [key, value] of Object.entries(adminProductFilters.value)) {
+    if (String(value).trim()) query.set(key, String(value).trim());
+  }
+  return query;
+}
+
+async function loadAdminProductFilterOptions() {
+  const query = new URLSearchParams();
+  if (adminProductFilters.value.category) query.set("category", adminProductFilters.value.category);
+  const response = await authorizedRequest(`/api/v1/admin/products/filter-options?${query}`);
+  adminProductFilterOptions.value = response;
+}
+
+async function loadAdminProducts({ page = adminProductPagination.value.page, refreshOptions = false } = {}) {
+  isLoadingAdminProducts.value = true;
+  adminProductsError.value = "";
+  try {
+    if (refreshOptions) await loadAdminProductFilterOptions();
+    const response = await authorizedRequest(`/api/v1/admin/products?${buildAdminProductsQuery(page)}`);
+    adminProducts.value = response.products || [];
+    adminProductPagination.value = response.pagination;
+  } catch (error) {
+    adminProductsError.value = error.message;
+    adminProducts.value = [];
+  } finally {
+    isLoadingAdminProducts.value = false;
+  }
+}
+
+async function applyAdminProductFilters({ categoryChanged = false } = {}) {
+  if (categoryChanged) adminProductFilters.value.subcategory = "";
+  await loadAdminProducts({ page: 1, refreshOptions: true });
+}
+
+function scheduleAdminProductSearch() {
+  if (adminProductSearchTimer) window.clearTimeout(adminProductSearchTimer);
+  adminProductSearchTimer = window.setTimeout(() => void loadAdminProducts({ page: 1 }), 300);
+}
+
+function resetAdminProductFilters() {
+  adminProductFilters.value = { search: "", category: "", subcategory: "", series: "", minPrice: "", maxPrice: "" };
+  void loadAdminProducts({ page: 1, refreshOptions: true });
+}
+
+async function openAdminProductDetails(product) {
+  adminProductsError.value = "";
+  try {
+    const response = await authorizedRequest(`/api/v1/admin/products/${product.id}`);
+    selectedAdminProduct.value = response.product;
+    isAdminProductDetailsOpen.value = true;
+  } catch (error) {
+    adminProductsError.value = error.message;
+  }
+}
+
+function formatAdminProductPrice(product) {
+  if (product.srp === null || product.srp === undefined) return "--";
+  return new Intl.NumberFormat("en-PH", { style: "currency", currency: product.currencyCode || "PHP", maximumFractionDigits: 2 }).format(product.srp);
+}
+
+async function loadAdminUsers() {
+  isLoadingAdminUsers.value = true;
+  usersError.value = "";
+  try {
+    const query = new URLSearchParams();
+    if (adminUserSearch.value.trim()) query.set("search", adminUserSearch.value.trim());
+    if (adminUserRole.value) query.set("role", adminUserRole.value);
+    const response = await authorizedRequest(`/api/v1/users/admins?${query}`);
+    adminUsers.value = response.users || [];
+  } catch (error) {
+    usersError.value = error.message;
+    adminUsers.value = [];
+  } finally {
+    isLoadingAdminUsers.value = false;
+  }
+}
+
+function scheduleAdminUserSearch() {
+  if (adminUserSearchTimer) window.clearTimeout(adminUserSearchTimer);
+  adminUserSearchTimer = window.setTimeout(() => void loadAdminUsers(), 300);
+}
+
+function resetAdminUserFilters() {
+  adminUserSearch.value = "";
+  adminUserRole.value = "";
+  void loadAdminUsers();
+}
+
+async function loadDesigners() {
+  isLoadingDesigners.value = true;
+  usersError.value = "";
+  try {
+    const response = await authorizedRequest("/api/v1/users/designers");
+    designers.value = response.designers || [];
+  } catch (error) {
+    usersError.value = error.message;
+    designers.value = [];
+  } finally {
+    isLoadingDesigners.value = false;
+  }
+}
+
+async function openDesignerDetails(designer) {
+  usersError.value = "";
+  try {
+    const response = await authorizedRequest(`/api/v1/users/designers/${designer.id}`);
+    selectedDesigner.value = response.designer;
+    isDesignerDetailsOpen.value = true;
+  } catch (error) {
+    usersError.value = error.message;
+  }
+}
+
+function openDesignerReview(designer) {
+  selectedDesigner.value = designer;
+  isDesignerReviewOpen.value = true;
+}
+
+async function reviewDesigner(status) {
+  if (!selectedDesigner.value) return;
+  isSavingDesignerReview.value = true;
+  usersError.value = "";
+  try {
+    await authorizedRequest(`/api/v1/users/designers/${selectedDesigner.value.id}/review`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+    isDesignerReviewOpen.value = false;
+    await loadDesigners();
+  } catch (error) {
+    usersError.value = error.message;
+  } finally {
+    isSavingDesignerReview.value = false;
+  }
+}
+
+function formatDesignerDate(value) {
+  if (!value) return "--";
+  return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(value));
+}
+
+function designerStatusLabel(status) {
+  return status ? `${status.charAt(0)}${status.slice(1).toLocaleLowerCase()}` : "Pending";
 }
 
 function showShopTheLookToast(message, type = "success") {
@@ -733,6 +958,17 @@ function clearStoredAdminSession() {
   sessionStorage.removeItem("caracole-admin-access-token");
   sessionStorage.removeItem("caracole-admin-refresh-token");
   sessionStorage.removeItem("caracole-admin-user");
+  sessionStorage.removeItem(ADMIN_VIEW_STORAGE_KEY);
+}
+
+async function loadRestoredAdminPage() {
+  if (active.value === "Products") await loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
+  if (active.value === "Admin") await loadAdminUsers();
+  if (active.value === "Designers") await loadDesigners();
+  if (activeContentLink.value === "Shop the Look") {
+    await nextTick();
+    document.getElementById("shop-the-look")?.scrollIntoView({ block: "start" });
+  }
 }
 
 async function refreshAdminSession() {
@@ -754,7 +990,10 @@ async function refreshAdminSession() {
 onMounted(async () => {
   if (isAuthenticated.value) {
     await refreshAdminSession();
-    if (isAuthenticated.value) await Promise.all([loadHeroBanners(), loadShopTheLook()]);
+    if (isAuthenticated.value) {
+      await Promise.all([loadHeroBanners(), loadShopTheLook()]);
+      await loadRestoredAdminPage();
+    }
   }
 });
 
@@ -1018,7 +1257,7 @@ function showLogin() {
             :aria-controls="
               group.items.length ? `admin-submenu-${group.title}` : undefined
             "
-            @click="group.items.length ? toggle(group) : select(group.title)"
+            @click="selectGroup(group)"
           >
             <i :class="group.icon" aria-hidden="true"></i
             ><span>{{ group.title }}</span>
@@ -1062,13 +1301,8 @@ function showLogin() {
     </aside>
 
     <main class="admin-main">
-      <header class="admin-topbar">
-        <p>{{ active }}</p>
-        <span>Administrator</span>
-      </header>
-      <section class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners' }">
-        <p class="admin-eyebrow">Caracole Administration</p>
-        <h1>{{ active }}</h1>
+      <section class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--users': ['Admin', 'Designers', 'Customers'].includes(active) }">
+        <h1>{{ adminTopbarTitle }}</h1>
         <template v-if="active === 'Hero Banners'">
           <Transition name="admin-editor-slide">
             <div v-if="isHeroBannerFormOpen" class="admin-hero-banner-editor">
@@ -1166,7 +1400,7 @@ function showLogin() {
           <section class="admin-existing-banners" aria-labelledby="existing-hero-banners-title">
             <header>
               <div>
-                <h2 id="existing-hero-banners-title">Existing Hero Banners</h2>
+                <h2 id="existing-hero-banners-title">Hero Banners</h2>
                 <p>Choose a placement when creating a banner, or drag a saved banner to another slot.</p>
               </div>
             </header>
@@ -1411,6 +1645,156 @@ function showLogin() {
               </div>
             </Transition>
           </Teleport>
+        </template>
+        <template v-else-if="active === 'Products'">
+          <section class="admin-products" aria-labelledby="admin-products-title">
+            <p id="admin-products-title" class="admin-products__sync-note">Browse the locally synchronized catalog. Changes in Shopify will appear after the next scheduled sync.</p>
+
+            <div class="admin-products__filters" aria-label="Product filters">
+              <label class="admin-products__search">
+                <span><i class="pi pi-search" aria-hidden="true"></i> Search catalog</span>
+                <input v-model="adminProductFilters.search" type="search" placeholder="Name, EDP number, or article number" @input="scheduleAdminProductSearch" />
+              </label>
+              <label>
+                <span>Main Category</span>
+                <select v-model="adminProductFilters.category" @change="applyAdminProductFilters({ categoryChanged: true })">
+                  <option value="">All main categories</option>
+                  <option v-for="category in adminProductFilterOptions.categories" :key="category" :value="category">{{ category }}</option>
+                </select>
+              </label>
+              <label>
+                <span>Subcategory</span>
+                <select v-model="adminProductFilters.subcategory" :disabled="!adminProductFilters.category" @change="applyAdminProductFilters()">
+                  <option value="">{{ adminProductFilters.category ? 'All subcategories' : 'Choose a main category first' }}</option>
+                  <option v-for="subcategory in adminProductFilterOptions.subcategories" :key="subcategory" :value="subcategory">{{ subcategory }}</option>
+                </select>
+              </label>
+              <label>
+                <span>Series</span>
+                <select v-model="adminProductFilters.series" @change="applyAdminProductFilters()">
+                  <option value="">All series</option>
+                  <option v-for="series in adminProductFilterOptions.series" :key="series" :value="series">{{ series }}</option>
+                </select>
+              </label>
+              <label>
+                <span>Minimum SRP</span>
+                <input v-model="adminProductFilters.minPrice" type="number" min="0" step="0.01" placeholder="₱ 0" @change="applyAdminProductFilters()" />
+              </label>
+              <label>
+                <span>Maximum SRP</span>
+                <input v-model="adminProductFilters.maxPrice" type="number" min="0" step="0.01" placeholder="No maximum" @change="applyAdminProductFilters()" />
+              </label>
+              <button class="admin-products__reset" type="button" @click="resetAdminProductFilters"><i class="pi pi-filter-slash" aria-hidden="true"></i> Reset filters</button>
+            </div>
+
+            <p v-if="adminProductsError" class="admin-products__error" role="alert">{{ adminProductsError }}</p>
+            <DataTable
+              :value="adminProducts"
+              :loading="isLoadingAdminProducts"
+              :lazy="true"
+              paginator
+              :rows="10"
+              :first="(adminProductPagination.page - 1) * 10"
+              :totalRecords="adminProductPagination.totalItems"
+              :rowsPerPageOptions="[]"
+              class="admin-products__table"
+              dataKey="id"
+              @page="loadAdminProducts({ page: $event.page + 1 })"
+            >
+              <template #empty><div class="admin-products__empty">No products match the selected filters.</div></template>
+              <template #loading><div class="admin-products__empty">Loading catalog products…</div></template>
+              <Column header="Product" style="min-width: 300px">
+                <template #body="{ data }">
+                  <div class="admin-product-cell">
+                    <img v-if="data.image" :src="data.image" :alt="data.name" />
+                    <span v-else class="admin-product-cell__image-placeholder"><i class="pi pi-image" aria-hidden="true"></i></span>
+                    <div><strong>{{ data.name }}</strong><small>EDP: {{ data.edpNumber }}</small><small>Article: {{ data.articleNumber }}</small></div>
+                  </div>
+                </template>
+              </Column>
+              <Column header="Category" style="min-width: 190px">
+                <template #body="{ data }"><div class="admin-product-category"><strong>{{ data.mainCategory }}</strong><small>{{ data.subcategory }}</small></div></template>
+              </Column>
+              <Column field="series" header="Series" style="min-width: 150px" />
+              <Column header="SRP" style="min-width: 135px"><template #body="{ data }"><span class="admin-product-price">{{ formatAdminProductPrice(data) }}</span></template></Column>
+              <Column header="Actions" style="width: 94px"><template #body="{ data }"><button class="admin-product-action" type="button" :aria-label="`View ${data.name}`" title="View product" @click="openAdminProductDetails(data)"><i class="pi pi-eye" aria-hidden="true"></i></button></template></Column>
+            </DataTable>
+          </section>
+
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="isAdminProductDetailsOpen" class="admin-product-dialog-backdrop" role="presentation" @click.self="isAdminProductDetailsOpen = false">
+                <section ref="adminProductDialog" class="admin-product-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-product-dialog-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, adminProductDialog)">
+                  <header><div><p class="admin-eyebrow">Catalog Product</p><h2 id="admin-product-dialog-title">{{ selectedAdminProduct?.name }}</h2></div><button type="button" aria-label="Close product details" @click="isAdminProductDetailsOpen = false"><i class="pi pi-times" aria-hidden="true"></i></button></header>
+                  <div class="admin-product-dialog__body">
+                    <img v-if="selectedAdminProduct?.image" :src="selectedAdminProduct.image" :alt="selectedAdminProduct.name" />
+                    <div v-else class="admin-product-dialog__image-placeholder"><i class="pi pi-image" aria-hidden="true"></i></div>
+                    <dl><div><dt>EDP Number</dt><dd>{{ selectedAdminProduct?.edpNumber }}</dd></div><div><dt>Article Number</dt><dd>{{ selectedAdminProduct?.articleNumber }}</dd></div><div><dt>Category</dt><dd>{{ selectedAdminProduct?.mainCategory }}<small>{{ selectedAdminProduct?.subcategory }}</small></dd></div><div><dt>Series</dt><dd>{{ selectedAdminProduct?.series }}</dd></div><div><dt>SRP</dt><dd>{{ selectedAdminProduct ? formatAdminProductPrice(selectedAdminProduct) : '--' }}</dd></div></dl>
+                  </div>
+                  <div v-if="selectedAdminProduct?.description" class="admin-product-dialog__description"><h3>Description</h3><p>{{ selectedAdminProduct.description }}</p></div>
+                  <section v-if="selectedAdminProduct?.attributes?.length" class="admin-product-dialog__attributes" aria-labelledby="admin-product-attributes-title">
+                    <h3 id="admin-product-attributes-title">Attributes</h3>
+                    <dl><template v-for="attribute in selectedAdminProduct.attributes" :key="attribute.key"><dt>{{ attribute.name }}</dt><dd>{{ attribute.value }}</dd></template></dl>
+                  </section>
+                </section>
+              </div>
+            </Transition>
+          </Teleport>
+        </template>
+        <template v-else-if="active === 'Admin'">
+          <section class="admin-users" aria-labelledby="admin-users-title">
+            <p id="admin-users-title" class="admin-users__intro">Manage staff and superuser accounts with access to the administration workspace.</p>
+            <div class="admin-users__filters" aria-label="Admin user filters">
+              <label class="admin-users__search"><span><i class="pi pi-search" aria-hidden="true"></i> Search users</span><input v-model="adminUserSearch" type="search" placeholder="First name, last name, or email" @input="scheduleAdminUserSearch" /></label>
+              <label><span>Role</span><select v-model="adminUserRole" @change="loadAdminUsers"><option value="">All roles</option><option value="staff">Staff</option><option value="superuser">Superuser</option></select></label>
+              <button type="button" @click="resetAdminUserFilters"><i class="pi pi-filter-slash" aria-hidden="true"></i> Reset filters</button>
+            </div>
+            <p v-if="usersError" class="admin-users__error" role="alert">{{ usersError }}</p>
+            <DataTable :value="adminUsers" :loading="isLoadingAdminUsers" paginator :rows="10" class="admin-users__table" dataKey="id">
+              <template #empty><div class="admin-users__empty">No admin users match the selected filters.</div></template>
+              <template #loading><div class="admin-users__empty">Loading admin users…</div></template>
+              <Column header="Email" style="min-width: 290px"><template #body="{ data }">{{ data.email }} <small v-if="data.email.toLocaleLowerCase() === currentAdminEmail" class="admin-users__current-user">(you)</small></template></Column>
+              <Column field="name" header="Name" style="min-width: 220px" />
+              <Column header="Role" style="min-width: 150px"><template #body="{ data }"><span class="admin-users__role" :class="`is-${data.role.toLocaleLowerCase()}`">{{ data.role }}</span></template></Column>
+            </DataTable>
+          </section>
+        </template>
+        <template v-else-if="active === 'Designers'">
+          <section class="admin-users" aria-labelledby="designers-title">
+            <p id="designers-title" class="admin-users__intro">Review registered designers and view their submitted account details.</p>
+            <p v-if="usersError" class="admin-users__error" role="alert">{{ usersError }}</p>
+            <DataTable :value="designers" :loading="isLoadingDesigners" paginator :rows="10" class="admin-users__table" dataKey="id">
+              <template #empty><div class="admin-users__empty">No designers have registered yet.</div></template>
+              <template #loading><div class="admin-users__empty">Loading designers…</div></template>
+              <Column field="email" header="Email" style="min-width: 270px" />
+              <Column field="name" header="Name" style="min-width: 220px" />
+              <Column field="mobileNumber" header="Mobile Number" style="min-width: 165px" />
+              <Column header="Actions" style="width: 120px"><template #body="{ data }"><div class="admin-users__actions"><button type="button" :aria-label="`View ${data.name}`" title="View designer" @click="openDesignerDetails(data)"><i class="pi pi-eye" aria-hidden="true"></i></button><button type="button" :aria-label="`Evaluate ${data.name}`" title="Evaluate designer" @click="openDesignerReview(data)"><i class="pi pi-user-edit" aria-hidden="true"></i></button></div></template></Column>
+            </DataTable>
+          </section>
+
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="isDesignerDetailsOpen" class="admin-product-dialog-backdrop" role="presentation" @click.self="isDesignerDetailsOpen = false">
+                <section ref="designerDetailsDialog" class="admin-product-dialog admin-designer-dialog" role="dialog" aria-modal="true" aria-labelledby="designer-details-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, designerDetailsDialog)">
+                  <header><div><p class="admin-eyebrow">Designer</p><h2 id="designer-details-title">{{ selectedDesigner?.name }}</h2></div><button type="button" aria-label="Close designer details" @click="isDesignerDetailsOpen = false"><i class="pi pi-times" aria-hidden="true"></i></button></header>
+                  <dl class="admin-designer-dialog__details"><div><dt>Email</dt><dd>{{ selectedDesigner?.email }}</dd></div><div><dt>Mobile Number</dt><dd>{{ selectedDesigner?.mobileNumber }}</dd></div><div><dt>Birthdate</dt><dd>{{ formatDesignerDate(selectedDesigner?.birthdate) }}</dd></div><div><dt>Review Status</dt><dd><span class="admin-users__role" :class="`is-${selectedDesigner?.reviewStatus?.toLocaleLowerCase()}`">{{ designerStatusLabel(selectedDesigner?.reviewStatus) }}</span></dd></div><div><dt>Company</dt><dd>{{ selectedDesigner?.company || '--' }}</dd></div><div><dt>Office Address</dt><dd>{{ selectedDesigner?.officeAddress || '--' }}</dd></div><div><dt>Company Website</dt><dd><a v-if="selectedDesigner?.companyWebsite" :href="selectedDesigner.companyWebsite" target="_blank" rel="noreferrer">{{ selectedDesigner.companyWebsite }}</a><template v-else>--</template></dd></div><div><dt>Touchpoint</dt><dd>{{ selectedDesigner?.touchpoint || '--' }}</dd></div><div><dt>How did you hear about us?</dt><dd>{{ selectedDesigner?.howDidYouHearAboutUs || '--' }}</dd></div><div><dt>Reviewed</dt><dd>{{ selectedDesigner?.reviewedAt ? `${formatDesignerDate(selectedDesigner.reviewedAt)} by ${selectedDesigner.reviewedBy?.email || 'Administrator'}` : '--' }}</dd></div></dl>
+                </section>
+              </div>
+            </Transition>
+          </Teleport>
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="isDesignerReviewOpen" class="admin-product-dialog-backdrop" role="presentation" @click.self="!isSavingDesignerReview && (isDesignerReviewOpen = false)">
+                <section ref="designerReviewDialog" class="admin-designer-review-dialog" role="dialog" aria-modal="true" aria-labelledby="designer-review-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, designerReviewDialog)">
+                  <i class="pi pi-user-edit" aria-hidden="true"></i><h2 id="designer-review-title">Evaluate designer</h2><p>Choose a review status for <strong>{{ selectedDesigner?.name }}</strong>. This does not change their account access.</p><div><button type="button" :disabled="isSavingDesignerReview" @click="isDesignerReviewOpen = false">Close</button><button type="button" class="admin-designer-review-dialog__reject" :disabled="isSavingDesignerReview" @click="reviewDesigner('REJECTED')">Reject</button><button type="button" class="admin-designer-review-dialog__approve" :disabled="isSavingDesignerReview" @click="reviewDesigner('APPROVED')">{{ isSavingDesignerReview ? 'Saving…' : 'Approve' }}</button></div>
+                </section>
+              </div>
+            </Transition>
+          </Teleport>
+        </template>
+        <template v-else-if="active === 'Customers'">
+          <section class="admin-users admin-users--empty" aria-labelledby="customers-title"><p id="customers-title">No customers yet.</p></section>
         </template>
         <div v-else class="admin-placeholder">Hello World</div>
       </section>

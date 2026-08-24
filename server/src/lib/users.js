@@ -8,7 +8,11 @@ export const userSelect = {
   isSuperuser: true,
   isActive: true,
   isEmailVerified: true,
-  designer: true
+  designer: {
+    include: {
+      reviewedBy: { select: { id: true, email: true } }
+    }
+  }
 }
 
 export function designerData(designer) {

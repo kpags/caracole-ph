@@ -27,7 +27,15 @@ const FABRICS = [
 ]
 
 function searchable(product) {
-  return [product.name, product.finish, product.description, product.series].filter(Boolean).join(' ')
+  return [product.name, ...productAttributeValues(product), product.description, product.series].filter(Boolean).join(' ')
+}
+
+export function productAttributeValue(product, key) {
+  return product?.attributes?.find((attribute) => attribute.key === key)?.value || ''
+}
+
+export function productAttributeValues(product) {
+  return (product?.attributes || []).map((attribute) => attribute.value).filter(Boolean)
 }
 
 function matches(text, definitions) {
@@ -35,7 +43,7 @@ function matches(text, definitions) {
 }
 
 export function getSizeGroup(product) {
-  const firstMeasurement = Number(String(product.size ?? '').match(/\d+(?:\.\d+)?/)?.[0])
+  const firstMeasurement = Number(productAttributeValue(product, 'size').match(/\d+(?:\.\d+)?/)?.[0])
   if (!firstMeasurement) return 'Unspecified'
   if (firstMeasurement <= 60) return 'Small'
   if (firstMeasurement <= 120) return 'Medium'
@@ -47,7 +55,7 @@ export function getProductFacets(product) {
   const text = searchable(product)
   return {
     size: getSizeGroup(product),
-    finishes: String(product.finish ?? '').split(',').map((value) => value.trim()).filter((value) => value && value !== '--'),
+    finishes: productAttributeValue(product, 'finish').split(',').map((value) => value.trim()).filter((value) => value && value !== '--'),
     materials: matches(text, MATERIALS),
     colors: matches(text, COLORS),
     fabrics: matches(text, FABRICS),
