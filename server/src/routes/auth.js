@@ -8,6 +8,10 @@ import { designerData } from '../lib/users.js'
 
 const credentialsSchema = z.object({ email: emailSchema, password: passwordSchema }).strict()
 
+export function designerRegistrationNotificationRecipients(config) {
+  return [config.SMTP_USER]
+}
+
 export function authRoutes({ prisma, config, auth, mailer }) {
   const router = express.Router()
 
@@ -16,16 +20,25 @@ export function authRoutes({ prisma, config, auth, mailer }) {
     await mailer.sendOtp({ template, email: user.email, firstName: user.designer?.firstName ?? 'Administrator', otp, config })
   }
 
+  async function notifyDesignerRegistration(user) {
+    const designer = { ...user.designer, email: user.email }
+    await Promise.all([
+      mailer.sendDesignerRegistrationConfirmation({ designer, config }),
+      mailer.sendDesignerRegistrationNotification({ designer, recipients: designerRegistrationNotificationRecipients(config), config })
+    ])
+  }
+
   router.post('/register/designer', asyncRoute(async (req, res) => {
     const body = z.object({ email: emailSchema, password: passwordSchema, designer: designerSchema }).strict().parse(req.body)
     const existing = await prisma.user.findUnique({ where: { email: body.email }, include: { designer: true } })
     if (existing?.isEmailVerified) throw new HttpError(409, 'Email is already registered')
     const password = await bcrypt.hash(body.password, config.BCRYPT_SALT_ROUNDS)
     const user = existing
-      ? await prisma.user.update({ where: { id: existing.id }, data: { password, isActive: true, isDesigner: true, designer: { upsert: { create: designerData(body.designer), update: designerData(body.designer) } } }, include: { designer: true } })
+      ? await prisma.user.update({ where: { id: existing.id }, data: { password, isActive: true, isDesigner: true, designer: { upsert: { create: designerData(body.designer), update: { ...designerData(body.designer), reviewStatus: 'PENDING', reviewedAt: null, reviewedById: null } } } }, include: { designer: true } })
       : await prisma.user.create({ data: { email: body.email, password, isDesigner: true, designer: { create: designerData(body.designer) } }, include: { designer: true } })
     await sendOtp(user, 'EMAIL_VERIFICATION', 'signup-otp')
-    res.status(201).json({ message: 'Registration created. Check your email for the verification OTP.', user: { id: user.id, email: user.email } })
+    await notifyDesignerRegistration(user)
+    res.status(201).json({ message: 'Registration received. Check your email for the verification OTP and registration confirmation.', user: { id: user.id, email: user.email } })
   }))
 
   router.post('/verify-email', asyncRoute(async (req, res) => {

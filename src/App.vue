@@ -429,6 +429,9 @@ const sampleAccount = {
 const designerOpen = ref(false);
 const designerSubmitted = ref(false);
 const designerError = ref("");
+const isSubmittingDesigner = ref(false);
+const showDesignerPassword = ref(false);
+const showDesignerConfirmPassword = ref(false);
 const designerForm = reactive({
   firstName: "",
   lastName: "",
@@ -902,12 +905,16 @@ function openDesigner() {
   closeSearch();
   designerError.value = "";
   designerSubmitted.value = false;
+  showDesignerPassword.value = false;
+  showDesignerConfirmPassword.value = false;
   designerOpen.value = true;
 }
 
 function closeDesigner() {
   designerOpen.value = false;
   designerError.value = "";
+  showDesignerPassword.value = false;
+  showDesignerConfirmPassword.value = false;
 }
 
 function prefillGuestForm(form) {
@@ -972,58 +979,70 @@ function closeSearch() {
   searchOpen.value = false;
 }
 
-function submitDesignerApplication() {
+function designerPasswordError() {
+  if (designerForm.password.length < 8) {
+    return "Password must be at least 8 characters.";
+  }
   if (designerForm.password !== designerForm.confirmPassword) {
-    designerError.value = "The passwords do not match.";
+    return "The passwords do not match.";
+  }
+  return "";
+}
+
+async function submitDesignerApplication() {
+  const passwordError = designerPasswordError();
+  if (passwordError) {
+    designerError.value = passwordError;
     return;
   }
 
-  const application = {
-    firstName: designerForm.firstName.trim(),
-    lastName: designerForm.lastName.trim(),
-    email: designerForm.email.trim().toLowerCase(),
-    mobile: designerForm.mobile.trim(),
-    birthDate: designerForm.birthDate,
-    company: designerForm.company.trim(),
-    officeAddress: designerForm.officeAddress.trim(),
-    website: designerForm.website.trim(),
-    touchpoint: designerForm.touchpoint,
-    discovery: designerForm.discovery,
-    submittedAt: new Date().toISOString(),
-  };
-  try {
-    const applications = JSON.parse(
-      localStorage.getItem("caracole-designer-applications") || "[]",
-    );
-    applications.push(application);
-    localStorage.setItem(
-      "caracole-designer-applications",
-      JSON.stringify(applications),
-    );
-  } catch {
-    localStorage.setItem(
-      "caracole-designer-applications",
-      JSON.stringify([application]),
-    );
-  }
-  designerSubmitted.value = true;
+  isSubmittingDesigner.value = true;
   designerError.value = "";
-  Object.assign(designerForm, {
-    firstName: "",
-    lastName: "",
-    email: "",
-    mobile: "",
-    birthDate: "",
-    company: "",
-    officeAddress: "",
-    website: "",
-    password: "",
-    confirmPassword: "",
-    touchpoint: "",
-    discovery: "",
-    termsAccepted: false,
-    captchaConfirmed: false,
-  });
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/auth/register/designer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: designerForm.email.trim().toLowerCase(),
+        password: designerForm.password,
+        designer: {
+          firstName: designerForm.firstName.trim(),
+          lastName: designerForm.lastName.trim(),
+          mobileNumber: designerForm.mobile.trim(),
+          birthdate: designerForm.birthDate,
+          company: designerForm.company.trim() || null,
+          officeAddress: designerForm.officeAddress.trim() || null,
+          companyWebsite: designerForm.website.trim() || null,
+          touchpoint: designerForm.touchpoint,
+          howDidYouHearAboutUs: designerForm.discovery,
+        },
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || "We could not submit your registration. Please try again.");
+
+    designerSubmitted.value = true;
+    Object.assign(designerForm, {
+      firstName: "",
+      lastName: "",
+      email: "",
+      mobile: "",
+      birthDate: "",
+      company: "",
+      officeAddress: "",
+      website: "",
+      password: "",
+      confirmPassword: "",
+      touchpoint: "",
+      discovery: "",
+      termsAccepted: false,
+      captchaConfirmed: false,
+    });
+  } catch (error) {
+    designerError.value = error.message || "We could not submit your registration. Please try again.";
+  } finally {
+    isSubmittingDesigner.value = false;
+  }
 }
 
 function changeDrawerQuantity(item, amount) {
@@ -1511,24 +1530,33 @@ onBeforeUnmount(() => {
             /></label>
           </div>
           <div class="designer-fields designer-fields--two">
-            <label
-              ><span>Password</span
-              ><input
-                v-model="designerForm.password"
-                type="password"
-                autocomplete="new-password"
-                minlength="8"
-                required
-            /></label>
-            <label
-              ><span>Confirm password</span
-              ><input
-                v-model="designerForm.confirmPassword"
-                type="password"
-                autocomplete="new-password"
-                minlength="8"
-                required
-            /></label>
+            <label>
+              <span class="designer-password-label"><span>Password</span><span class="designer-password-help" tabindex="0" aria-label="Password requirements">?<span role="tooltip"><span>Use at least 8 characters.</span><span>Passwords must match exactly.</span></span></span></span>
+              <span class="designer-password-input">
+                <input
+                  v-model="designerForm.password"
+                  :type="showDesignerPassword ? 'text' : 'password'"
+                  autocomplete="new-password"
+                  minlength="8"
+                  required
+                />
+                <button type="button" :aria-label="showDesignerPassword ? 'Hide password' : 'Show password'" @click="showDesignerPassword = !showDesignerPassword"><i :class="showDesignerPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" aria-hidden="true"></i></button>
+              </span>
+            </label>
+            <label>
+              <span>Confirm password</span>
+              <span class="designer-password-input">
+                <input
+                  v-model="designerForm.confirmPassword"
+                  :type="showDesignerConfirmPassword ? 'text' : 'password'"
+                  autocomplete="new-password"
+                  minlength="8"
+                  :aria-invalid="designerForm.confirmPassword ? designerForm.password !== designerForm.confirmPassword : undefined"
+                  required
+                />
+                <button type="button" :aria-label="showDesignerConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'" @click="showDesignerConfirmPassword = !showDesignerConfirmPassword"><i :class="showDesignerConfirmPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" aria-hidden="true"></i></button>
+              </span>
+            </label>
             <label
               ><span>Touchpoint</span
               ><select v-model="designerForm.touchpoint" required>
@@ -1574,8 +1602,8 @@ onBeforeUnmount(() => {
                 ><small>Prototype verification</small></span
               ><i aria-hidden="true">✓</i></label
             >
-            <button class="designer-submit" type="submit">
-              Register <span>→</span>
+            <button class="designer-submit" type="submit" :disabled="isSubmittingDesigner">
+              {{ isSubmittingDesigner ? "Registering…" : "Register" }} <span>→</span>
             </button>
           </div>
           <p v-if="designerError" class="auth-error" role="alert">

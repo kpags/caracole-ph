@@ -14,6 +14,7 @@ const isForgotPassword = ref(false);
 const email = ref("");
 const password = ref("");
 const showPassword = ref(false);
+const isMobileSidebarOpen = ref(false);
 const resetRequested = ref(false);
 const resetOtp = ref("");
 const newPassword = ref("");
@@ -104,6 +105,7 @@ const adminUserSearch = ref("");
 const adminUserRole = ref("");
 const isLoadingAdminUsers = ref(false);
 const designers = ref([]);
+const designerStatusFilter = ref("");
 const isLoadingDesigners = ref(false);
 const usersError = ref("");
 const selectedDesigner = ref(null);
@@ -135,6 +137,7 @@ const shopTheLookImageStyle = computed(() => ({
   width: `${Math.round(shopTheLookImageDimensions.value.width * shopTheLookZoom.value / 100)}px`,
   height: `${Math.round(shopTheLookImageDimensions.value.height * shopTheLookZoom.value / 100)}px`,
 }));
+const filteredDesigners = computed(() => designers.value.filter((designer) => !designerStatusFilter.value || (designer.reviewStatus || "PENDING") === designerStatusFilter.value));
 
 const heroBannerPreview = computed(
   () => heroBannerPreviewUrl.value || heroBannerExistingMedia.value?.mediaUrl || "",
@@ -197,6 +200,7 @@ function hasStoredAdminSession() {
 }
 
 function select(item) {
+  isMobileSidebarOpen.value = false;
   if (item === "Logout") {
     isAuthenticated.value = false;
     password.value = "";
@@ -239,10 +243,31 @@ function selectGroup(group) {
   else select(group.title);
 }
 
+function closeMobileSidebar() {
+  isMobileSidebarOpen.value = false;
+}
+
+function toggleMobileSidebar() {
+  if (isMobileSidebarOpen.value) {
+    closeMobileSidebar();
+    return;
+  }
+  expanded.value = { ...expanded.value, Contents: false, Inquiries: false, Users: false };
+  isMobileSidebarOpen.value = true;
+}
+
+function handleAdminKeydown(event) {
+  if (event.key === "Escape") closeMobileSidebar();
+}
+
 watch([active, activeContentLink, expanded], () => {
   if (!isAuthenticated.value) return;
   sessionStorage.setItem(ADMIN_VIEW_STORAGE_KEY, JSON.stringify({ active: active.value, activeContentLink: activeContentLink.value, expanded: expanded.value }));
 }, { deep: true });
+
+watch(isMobileSidebarOpen, (isOpen) => {
+  document.body.classList.toggle("admin-sidebar-open", isOpen);
+});
 
 function openMediaPicker() {
   heroBannerInput.value?.click();
@@ -337,6 +362,8 @@ onBeforeUnmount(() => {
   if (adminProductSearchTimer) window.clearTimeout(adminProductSearchTimer);
   if (adminUserSearchTimer) window.clearTimeout(adminUserSearchTimer);
   document.body.classList.remove("modal-scroll-lock");
+  document.body.classList.remove("admin-sidebar-open");
+  window.removeEventListener("keydown", handleAdminKeydown);
   const appRoot = document.getElementById("app");
   if (appRoot) appRoot.inert = false;
 });
@@ -601,6 +628,14 @@ function formatDesignerDate(value) {
 
 function designerStatusLabel(status) {
   return status ? `${status.charAt(0)}${status.slice(1).toLocaleLowerCase()}` : "Pending";
+}
+
+function designerStatusClass(status) {
+  return `is-${(status || "PENDING").toLocaleLowerCase()}`;
+}
+
+function resetDesignerStatusFilter() {
+  designerStatusFilter.value = "";
 }
 
 function showShopTheLookToast(message, type = "success") {
@@ -988,6 +1023,7 @@ async function refreshAdminSession() {
 }
 
 onMounted(async () => {
+  window.addEventListener("keydown", handleAdminKeydown);
   if (isAuthenticated.value) {
     await refreshAdminSession();
     if (isAuthenticated.value) {
@@ -1235,7 +1271,10 @@ function showLogin() {
   </section>
 
   <div v-else class="admin-shell">
-    <aside class="admin-sidebar">
+    <button class="admin-mobile-nav-toggle" :class="{ 'is-sidebar-open': isMobileSidebarOpen }" type="button" aria-label="Open navigation" :aria-expanded="isMobileSidebarOpen" aria-controls="admin-sidebar" @click="toggleMobileSidebar"><i class="pi pi-bars" aria-hidden="true"></i></button>
+    <Transition name="admin-sidebar-fade"><button v-if="isMobileSidebarOpen" class="admin-sidebar-backdrop" type="button" aria-label="Close navigation" @click="closeMobileSidebar"></button></Transition>
+    <aside id="admin-sidebar" class="admin-sidebar" :class="{ 'is-mobile-open': isMobileSidebarOpen }">
+      <button class="admin-sidebar__close" type="button" aria-label="Close navigation" @click="closeMobileSidebar"><i class="pi pi-times" aria-hidden="true"></i></button>
       <a class="admin-brand" href="/admin" aria-label="Caracole Philippines admin home">
         <span class="admin-brand__wordmark">caracole</span>
         <small>Philippines</small>
@@ -1762,13 +1801,19 @@ function showLogin() {
         <template v-else-if="active === 'Designers'">
           <section class="admin-users" aria-labelledby="designers-title">
             <p id="designers-title" class="admin-users__intro">Review registered designers and view their submitted account details.</p>
+            <div class="admin-users__filters admin-users__filters--designers" aria-label="Designer filters">
+              <label><span>Status</span><select v-model="designerStatusFilter"><option value="">All statuses</option><option value="PENDING">Pending</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option></select></label>
+              <button type="button" @click="resetDesignerStatusFilter"><i class="pi pi-filter-slash" aria-hidden="true"></i> Reset filters</button>
+            </div>
             <p v-if="usersError" class="admin-users__error" role="alert">{{ usersError }}</p>
-            <DataTable :value="designers" :loading="isLoadingDesigners" paginator :rows="10" class="admin-users__table" dataKey="id">
-              <template #empty><div class="admin-users__empty">No designers have registered yet.</div></template>
+            <DataTable :value="filteredDesigners" :loading="isLoadingDesigners" paginator :rows="10" class="admin-users__table" dataKey="id">
+              <template #empty><div class="admin-users__empty">No designers match the selected status.</div></template>
               <template #loading><div class="admin-users__empty">Loading designers…</div></template>
+              <Column field="firstName" header="First Name" style="min-width: 180px" />
+              <Column field="lastName" header="Last Name" style="min-width: 180px" />
               <Column field="email" header="Email" style="min-width: 270px" />
-              <Column field="name" header="Name" style="min-width: 220px" />
               <Column field="mobileNumber" header="Mobile Number" style="min-width: 165px" />
+              <Column header="Status" style="min-width: 130px"><template #body="{ data }"><span class="admin-users__role" :class="designerStatusClass(data.reviewStatus)">{{ designerStatusLabel(data.reviewStatus) }}</span></template></Column>
               <Column header="Actions" style="width: 120px"><template #body="{ data }"><div class="admin-users__actions"><button type="button" :aria-label="`View ${data.name}`" title="View designer" @click="openDesignerDetails(data)"><i class="pi pi-eye" aria-hidden="true"></i></button><button type="button" :aria-label="`Evaluate ${data.name}`" title="Evaluate designer" @click="openDesignerReview(data)"><i class="pi pi-user-edit" aria-hidden="true"></i></button></div></template></Column>
             </DataTable>
           </section>
