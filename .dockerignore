@@ -1,0 +1,12 @@
+node_modules/
+admin/node_modules/
+work/
+dist/
+.nuxt/
+.output/
+.git/
+.env
+.env.*
+!.env.example
+*.log
+*.tar.gz

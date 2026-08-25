@@ -1,8 +1,34 @@
 services:
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        format: raw
+    environment:
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: 3000
+      # Browser requests use the published API port; SSR uses Docker DNS.
+      NUXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-3000}
+      NUXT_API_INTERNAL_BASE_URL: http://api:3000
+    ports:
+      - "${CLIENT_PORT:-5173}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
   admin:
     build:
-      context: ./admin
+      context: .
+      dockerfile: admin/Dockerfile
+      args:
+        VITE_API_URL: ${ADMIN_API_URL:-http://localhost:3000}
     restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
     ports:
       - "${ADMIN_PORT:-8080}:80"
 
@@ -37,6 +63,8 @@ services:
     env_file: .env
     environment:
       PORT: 3000
+      CORS_ORIGIN: http://localhost:${CLIENT_PORT:-5173},http://localhost:${ADMIN_PORT:-8080}
+      ADMIN_DASHBOARD_URL: http://localhost:${ADMIN_PORT:-8080}
     ports:
       - "${API_PORT:-3000}:3000"
     depends_on:

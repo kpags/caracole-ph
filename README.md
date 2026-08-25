@@ -22,6 +22,22 @@ This creates the Cloudflare-compatible SSR worker used by the hosted
 storefront. For a standalone Node SSR server, use `npm run build:node` followed
 by `npm run start`.
 
+## Full local stack
+
+```sh
+docker compose up --build
+```
+
+This starts every service together:
+
+- Storefront: `http://localhost:5173`
+- Vue admin: `http://localhost:8080`
+- API health: `http://localhost:3000/health`
+- Prisma Studio: `http://127.0.0.1:5555`
+
+The admin deliberately remains a separate Vue application on port `8080`; it
+is not served through the Nuxt storefront's `/admin` path.
+
 ## Local database maintenance
 
 Prisma Studio is a development-only database browser. It is bound to localhost and starts with normal Compose commands.

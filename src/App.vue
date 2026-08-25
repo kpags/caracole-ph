@@ -141,7 +141,9 @@ const placeholderHeroBanners = [
 ];
 const videos = ref([...placeholderHeroBanners]);
 const runtimeConfig = useRuntimeConfig();
-const apiBaseUrl = (runtimeConfig.public.apiBaseUrl || "http://localhost:3000").replace(
+const apiBaseUrl = ((import.meta.server
+  ? runtimeConfig.apiInternalBaseUrl
+  : runtimeConfig.public.apiBaseUrl) || "http://localhost:3000").replace(
   /\/$/,
   "",
 );
