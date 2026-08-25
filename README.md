@@ -1,5 +1,27 @@
 # Caracole PH
 
+## Storefront (Nuxt SSR)
+
+The public storefront now uses Nuxt with server-side rendering for crawlable
+collection and product pages. The admin app remains the separate Vue/Vite app
+inside `admin/`.
+
+```sh
+npm run dev
+```
+
+The local storefront is available at `http://localhost:5173`. Set
+`NUXT_PUBLIC_API_BASE_URL` to the public Express API address; the existing
+`VITE_API_URL` value continues to work during the transition.
+
+```sh
+npm run build
+```
+
+This creates the Cloudflare-compatible SSR worker used by the hosted
+storefront. For a standalone Node SSR server, use `npm run build:node` followed
+by `npm run start`.
+
 ## Local database maintenance
 
 Prisma Studio is a development-only database browser. It is bound to localhost and starts with normal Compose commands.

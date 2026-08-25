@@ -4,14 +4,15 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
-    "postbuild": "node scripts/prepare-worker.mjs",
-    "preview": "vite preview --host 0.0.0.0"
+    "dev": "nuxt dev --host 0.0.0.0 --port 5173",
+    "build": "nuxt build --preset=cloudflare_pages && node scripts/prepare-nuxt-worker.mjs",
+    "build:node": "nuxt build --preset=node-server",
+    "preview": "nuxt preview --host 0.0.0.0 --port 5173",
+    "start": "node .output/server/index.mjs"
   },
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
-    "@vitejs/plugin-vue": "latest",
+    "nuxt": "4.2.0",
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",
     "quill": "^2.0.3",

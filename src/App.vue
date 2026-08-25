@@ -21,6 +21,7 @@ import {
   getProductPath,
   loadCatalog,
   loadProductByHandle,
+  configureCatalogApiBaseUrl,
   productKey,
 } from "./data/catalog.js";
 import ProductListingPage from "./components/ProductListingPage.vue";
@@ -60,59 +61,35 @@ const categorySlugs = {
 const categoriesBySlug = Object.fromEntries(
   Object.entries(categorySlugs).map(([name, slug]) => [slug, name]),
 );
-const routeMatch =
-  typeof window !== "undefined"
-    ? window.location.pathname.match(/^\/products\/([^/]+)\/?$/)
-    : null;
+const requestUrl = useRequestURL();
+const currentPathname = requestUrl.pathname;
+const currentSearch = requestUrl.search;
+const routeMatch = currentPathname.match(/^\/products\/([^/]+)\/?$/);
 const isNewArrivalsPage = routeMatch?.[1] === "new-arrivals";
 const listingCategory = routeMatch ? categoriesBySlug[routeMatch[1]] : null;
-const productRouteMatch =
-  typeof window !== "undefined"
-    ? window.location.pathname.match(/^\/product\/([^/]+)\/?$/)
-    : null;
+const productRouteMatch = currentPathname.match(/^\/product\/([^/]+)\/?$/);
 const selectedProduct = computed(() => productRouteMatch
   ? getProductByHandle(decodeURIComponent(productRouteMatch[1]))
   : null);
-const isCartPage =
-  typeof window !== "undefined" && /^\/cart\/?$/.test(window.location.pathname);
-const isCheckoutPage =
-  typeof window !== "undefined" &&
-  /^\/checkout\/?$/.test(window.location.pathname);
-const isCheckoutReviewPage =
-  typeof window !== "undefined" &&
-  /^\/checkout\/review\/?$/.test(window.location.pathname);
-const isTestimonialsPage =
-  typeof window !== "undefined" &&
-  /^\/testimonials\/?$/.test(window.location.pathname);
-const isOrdersPage =
-  typeof window !== "undefined" &&
-  /^\/orders\/?$/.test(window.location.pathname);
-const isWishlistPage =
-  typeof window !== "undefined" &&
-  /^\/wishlist\/?$/.test(window.location.pathname);
-const isDesignerListPage =
-  typeof window !== "undefined" &&
-  /^\/designers\/?$/.test(window.location.pathname);
-const designerRouteMatch =
-  typeof window !== "undefined"
-    ? window.location.pathname.match(/^\/designers\/([^/]+)\/?$/)
-    : null;
+const isCartPage = /^\/cart\/?$/.test(currentPathname);
+const isCheckoutPage = /^\/checkout\/?$/.test(currentPathname);
+const isCheckoutReviewPage = /^\/checkout\/review\/?$/.test(currentPathname);
+const isTestimonialsPage = /^\/testimonials\/?$/.test(currentPathname);
+const isOrdersPage = /^\/orders\/?$/.test(currentPathname);
+const isWishlistPage = /^\/wishlist\/?$/.test(currentPathname);
+const isDesignerListPage = /^\/designers\/?$/.test(currentPathname);
+const designerRouteMatch = currentPathname.match(/^\/designers\/([^/]+)\/?$/);
 const selectedDesigner = designerRouteMatch
   ? getDesignerBySlug(decodeURIComponent(designerRouteMatch[1]))
   : null;
 const isDesignerProfilePage = Boolean(selectedDesigner);
-const routeQuery =
-  typeof window !== "undefined"
-    ? new URLSearchParams(window.location.search)
-    : new URLSearchParams();
+const routeQuery = new URLSearchParams(currentSearch);
 const listingSubcategory = listingCategory
   ? routeQuery.get("subcategory") || routeQuery.get("sub_category") || ""
   : "";
 const isListingPage = Boolean(listingCategory || isNewArrivalsPage);
 const isProductPage = Boolean(productRouteMatch);
-const isShopTheLookPage =
-  typeof window !== "undefined" &&
-  /^\/shop-the-look\/?$/.test(window.location.pathname);
+const isShopTheLookPage = /^\/shop-the-look\/?$/.test(currentPathname);
 const homeLink = (anchor = "") =>
   isListingPage ||
   isProductPage ||
@@ -163,10 +140,56 @@ const placeholderHeroBanners = [
   },
 ];
 const videos = ref([...placeholderHeroBanners]);
-const apiBaseUrl = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(
+const runtimeConfig = useRuntimeConfig();
+const apiBaseUrl = (runtimeConfig.public.apiBaseUrl || "http://localhost:3000").replace(
   /\/$/,
   "",
 );
+configureCatalogApiBaseUrl(apiBaseUrl);
+
+const seoTitle = computed(() => {
+  if (selectedProduct.value?.name) return selectedProduct.value.name;
+  if (isNewArrivalsPage) return 'New Arrivals';
+  if (listingCategory) return `${listingCategory} Collection`;
+  if (isShopTheLookPage) return 'Shop the Look';
+  if (isDesignerListPage) return 'Designers';
+  if (isTestimonialsPage) return 'Testimonials';
+  if (isCartPage) return 'Shopping Cart';
+  if (isCheckoutPage || isCheckoutReviewPage) return 'Checkout';
+  return 'Modern Luxury, Made Personal';
+});
+const seoDescription = computed(() => {
+  if (selectedProduct.value?.description) return selectedProduct.value.description;
+  if (listingCategory) return `Explore ${listingCategory} furniture from Caracole Philippines.`;
+  if (isNewArrivalsPage) return 'Discover the newest artful furnishings from Caracole Philippines.';
+  return 'Discover Caracole Philippines — artful furnishings, expressive rooms, and modern luxury made personal.';
+});
+
+useSeoMeta({
+  title: () => seoTitle.value,
+  description: () => seoDescription.value,
+  ogTitle: () => seoTitle.value,
+  ogDescription: () => seoDescription.value,
+  twitterTitle: () => seoTitle.value,
+  twitterDescription: () => seoDescription.value,
+});
+
+// Public catalog pages render their data on the server when the API is
+// available. Browser-only interactions still initialize in onMounted.
+if (import.meta.server) {
+  const serverLoad = isProductPage
+    ? loadProductByHandle(decodeURIComponent(productRouteMatch[1]))
+    : isListingPage
+      ? loadCatalog({
+          page: 1,
+          limit: 24,
+          ...(isNewArrivalsPage ? {} : { category: listingCategory }),
+          ...(listingSubcategory ? { subcategory: listingSubcategory } : {}),
+        })
+      : Promise.resolve();
+
+  await serverLoad.catch(() => {});
+}
 
 function heroBannerToSlide(banner) {
   const category = banner.category === "Entertainments" ? "Entertainment" : banner.category;

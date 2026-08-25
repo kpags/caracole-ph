@@ -7,13 +7,19 @@ const productByHandle = ref(null)
 const status = ref('idle')
 const error = ref('')
 let pendingRequest = null
-const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '')
+let apiBaseUrl = (process.env.NUXT_PUBLIC_API_BASE_URL || process.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const catalogProducts = readonly(products)
 export const catalogStatus = readonly(status)
 export const catalogError = readonly(error)
 export const catalogPagination = readonly(pagination)
 export const catalogFilters = filters
+
+// The storefront supplies Nuxt's runtime value at application start. Keeping
+// configuration here preserves the existing catalog API used by the pages.
+export function configureCatalogApiBaseUrl(value) {
+  apiBaseUrl = (value || 'http://localhost:3000').replace(/\/$/, '')
+}
 
 export function getProductPath(product) {
   return product?.handle ? `/product/${encodeURIComponent(product.handle)}` : '#'
