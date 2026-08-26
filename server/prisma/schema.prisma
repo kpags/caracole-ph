@@ -119,6 +119,50 @@ model ShopTheLookEnvironment {
   @@map("shop_the_look_environments")
 }
 
+model MainCategoryDisplay {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  name      String   @unique @db.VarChar(80)
+  imageUrl  String   @map("image_url")
+
+  @@map("main_category_displays")
+}
+
+model DesignerProfile {
+  id                String                    @id @default(uuid()) @db.Uuid
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  slug              String                    @unique @db.VarChar(180)
+  name              String                    @db.VarChar(160)
+  link              String?
+  tagline           String                    @db.VarChar(100)
+  briefStory        String                    @map("brief_story") @db.VarChar(300)
+  thumbnailImageUrl String                    @map("thumbnail_image_url")
+  headerImageUrl    String                    @map("header_image_url")
+  isFeatured        Boolean                   @default(false) @map("is_featured")
+  featuredProducts  DesignerFeaturedProduct[]
+
+  @@index([isFeatured])
+  @@map("designer_profiles")
+}
+
+model DesignerFeaturedProduct {
+  id                String          @id @default(uuid()) @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  designerProfileId String          @map("designer_profile_id") @db.Uuid
+  name              String          @db.VarChar(160)
+  shortDescription  String          @map("short_description") @db.VarChar(150)
+  lifestyleImageUrl String          @map("lifestyle_image_url")
+  position          Int
+  designerProfile   DesignerProfile @relation(fields: [designerProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([designerProfileId, position])
+  @@index([designerProfileId])
+  @@map("designer_featured_products")
+}
+
 model Product {
   id                String   @id @default(uuid()) @db.Uuid
   shopifyId         String   @unique @map("shopify_id")

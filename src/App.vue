@@ -49,7 +49,7 @@ import {
   toggleWishlist,
   WISHLIST_EVENT,
 } from "./data/wishlist.js";
-import { designers, getDesignerBySlug } from "./data/designers.js";
+import { designers as fallbackDesigners } from "./data/designers.js";
 
 const categorySlugs = {
   Living: "living",
@@ -79,10 +79,12 @@ const isOrdersPage = /^\/orders\/?$/.test(currentPathname);
 const isWishlistPage = /^\/wishlist\/?$/.test(currentPathname);
 const isDesignerListPage = /^\/designers\/?$/.test(currentPathname);
 const designerRouteMatch = currentPathname.match(/^\/designers\/([^/]+)\/?$/);
-const selectedDesigner = designerRouteMatch
-  ? getDesignerBySlug(decodeURIComponent(designerRouteMatch[1]))
-  : null;
-const isDesignerProfilePage = Boolean(selectedDesigner);
+const designerProfiles = ref([...fallbackDesigners]);
+const hasLoadedDesignerProfiles = ref(false);
+const selectedDesigner = computed(() => designerRouteMatch
+  ? designerProfiles.value.find((designer) => designer.slug === decodeURIComponent(designerRouteMatch[1])) || null
+  : null);
+const isDesignerProfilePage = Boolean(designerRouteMatch);
 const routeQuery = new URLSearchParams(currentSearch);
 const listingSubcategory = listingCategory
   ? routeQuery.get("subcategory") || routeQuery.get("sub_category") || ""
@@ -273,7 +275,7 @@ function catalogSubcategories(category) {
     }));
 };
 
-const categories = [
+const categories = ref([
   {
     name: "Living",
     number: "01",
@@ -312,7 +314,69 @@ const categories = [
     href: "/products/entertainment",
     size: "wide",
   },
-];
+]);
+const categoryImageIndexes = ref(categories.value.map(() => 0));
+
+const featuredDesigners = computed(() => {
+  const configured = designerProfiles.value.filter((designer) => designer.isFeatured);
+  return (hasLoadedDesignerProfiles.value ? configured : fallbackDesigners).slice(0, 2);
+});
+
+function designerProfileToClientProfile(designer) {
+  return {
+    slug: designer.slug,
+    name: designer.name,
+    link: designer.link,
+    image: designer.thumbnailImageUrl,
+    banner: designer.headerImageUrl,
+    introDescription: designer.tagline,
+    profileDescription: designer.briefStory,
+    isFeatured: designer.isFeatured,
+    featuredProducts: (designer.featuredProducts || []).map((product) => ({
+      name: product.name,
+      description: product.shortDescription,
+      image: product.lifestyleImageUrl,
+    })),
+  };
+}
+
+function applyContentDisplays(content) {
+  if (content?.categories) {
+    const displays = new Map((content.categories.displays || []).map((display) => [display.name, display.imageUrl]));
+    categories.value = categories.value.map((category) => ({
+      ...category,
+      images: displays.has(category.name) ? [displays.get(category.name)] : category.images,
+    }));
+    categoryImageIndexes.value = categories.value.map(() => 0);
+  }
+  if (content?.designers) {
+    designerProfiles.value = (content.designers.designers || []).map(designerProfileToClientProfile);
+    hasLoadedDesignerProfiles.value = true;
+  }
+}
+
+async function fetchContentDisplays() {
+  try {
+    const [categoryResponse, designerResponse] = await Promise.all([
+      fetch(`${apiBaseUrl}/api/v1/content/main-categories`),
+      fetch(`${apiBaseUrl}/api/v1/content/designers/public`),
+    ]);
+    return {
+      categories: categoryResponse.ok ? await categoryResponse.json() : null,
+      designers: designerResponse.ok ? await designerResponse.json() : null,
+    };
+  } catch (error) {
+    console.warn("Unable to load content displays", error);
+    return null;
+  }
+}
+
+async function loadContentDisplays() {
+  applyContentDisplays(await fetchContentDisplays());
+}
+
+const { data: initialContentDisplays } = await useAsyncData('homepage-content-displays', fetchContentDisplays);
+applyContentDisplays(initialContentDisplays.value);
 
 const products = computed(() => [...catalogProducts.value]
   .sort((a, b) => Date.parse(b.publishedAt || 0) - Date.parse(a.publishedAt || 0))
@@ -433,7 +497,6 @@ const selectedShopTheLook = ref(null);
 const shopTheLookViewer = ref(null);
 const shopTheLookHover = ref({ productId: null, source: null });
 const shopTheLookProductPreview = ref(null);
-const categoryImageIndexes = ref(categories.map(() => 0));
 const categoryTimers = new Map();
 const accountView = ref(null);
 const currentUser = ref(null);
@@ -746,14 +809,14 @@ function handleLocationFocusOut(index, event) {
 }
 
 function startCategoryCarousel(index) {
-  if (categoryTimers.has(index) || categories[index].images.length < 2) return;
+  if (categoryTimers.has(index) || categories.value[index].images.length < 2) return;
 
   categoryTimers.set(
     index,
     window.setInterval(() => {
       categoryImageIndexes.value[index] =
         (categoryImageIndexes.value[index] + 1) %
-        categories[index].images.length;
+        categories.value[index].images.length;
     }, 1500),
   );
 }
@@ -1101,6 +1164,7 @@ onMounted(() => {
   if (productRouteMatch) void loadProductByHandle(decodeURIComponent(productRouteMatch[1])).catch(() => {});
   void loadHeroBanners();
   void loadShopTheLookEnvironments();
+  void loadContentDisplays();
   storedAccounts();
   try {
     currentUser.value = JSON.parse(
@@ -2156,7 +2220,7 @@ onBeforeUnmount(() => {
         </header>
         <div class="home-designers__grid">
           <a
-            v-for="(designer, index) in designers.slice(0, 2)"
+            v-for="(designer, index) in featuredDesigners"
             :key="designer.slug"
             :href="`/designers/${designer.slug}`"
             class="home-designer-card"
@@ -2440,9 +2504,9 @@ onBeforeUnmount(() => {
     <TestimonialsPage v-else-if="isTestimonialsPage" />
     <OrderHistoryPage v-else-if="isOrdersPage" />
     <WishlistPage v-else-if="isWishlistPage" />
-    <DesignerListPage v-else-if="isDesignerListPage" />
+    <DesignerListPage v-else-if="isDesignerListPage" :designers="designerProfiles" />
     <DesignerProfilePage
-      v-else-if="isDesignerProfilePage"
+      v-else-if="isDesignerProfilePage && selectedDesigner"
       :designer="selectedDesigner"
     />
     <CheckoutReviewPage v-else />

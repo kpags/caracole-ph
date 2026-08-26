@@ -5,8 +5,15 @@ import DataTable from "primevue/datatable";
 import Column from "primevue/column";
 import Quill from "quill";
 import "quill/dist/quill.snow.css";
+import AdminContentManager from "./AdminContentManager.vue";
 
 const ADMIN_VIEW_STORAGE_KEY = "caracole-admin-view";
+const contentSectionIds = {
+  "Hero Banners": "hero-banners",
+  "Shop the Look": "shop-the-look",
+  "Main Categories Display": "main-categories-display",
+  "Content Designers": "content-designers",
+};
 const storedAdminView = getStoredAdminView();
 const active = ref(storedAdminView.active);
 const isAuthenticated = ref(hasStoredAdminSession());
@@ -25,19 +32,28 @@ const isSubmitting = ref(false);
 const expanded = ref(storedAdminView.expanded);
 const activeContentLink = ref(storedAdminView.activeContentLink);
 const orderedGroups = [
-  { title: "Contents", icon: "pi pi-flag", items: ["Hero Banners", "Shop the Look"] },
+  { title: "Contents", icon: "pi pi-flag", items: [
+    { key: "Hero Banners", label: "Hero Banners" },
+    { key: "Shop the Look", label: "Shop the Look" },
+    { key: "Main Categories Display", label: "Main Categories Display" },
+    { key: "Content Designers", label: "Designers" },
+  ] },
   { title: "Products", icon: "pi pi-list", items: [] },
   { title: "Appointments", icon: "pi pi-clock", items: [] },
   {
     title: "Inquiries",
     icon: "pi pi-send",
-    items: ["General", "Product"],
+    items: [{ key: "General", label: "General" }, { key: "Product", label: "Product" }],
   },
   { title: "Newsletter", icon: "pi pi-envelope", items: [] },
   {
     title: "Users",
     icon: "pi pi-users",
-    items: ["Admin", "Designers", "Customers"],
+    items: [
+      { key: "Admin", label: "Admin" },
+      { key: "Registered Designers", label: "Designers" },
+      { key: "Customers", label: "Customers" },
+    ],
   },
 ];
 const heroBannerForm = ref({
@@ -158,7 +174,7 @@ const heroBannerSlots = computed(() =>
 const activeGroup = computed(() =>
   orderedGroups.find(
     (group) =>
-      group.title === active.value || group.items.includes(active.value),
+      group.title === active.value || group.items.some((item) => itemKey(item) === active.value),
   ),
 );
 const adminTopbarTitle = computed(() =>
@@ -176,12 +192,26 @@ function getStoredAdminView() {
   const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Users: false, Inquiries: false } };
   try {
     const value = JSON.parse(sessionStorage.getItem(ADMIN_VIEW_STORAGE_KEY) || "null");
-    const allowedItems = ["Hero Banners", "Shop the Look", "Products", "Appointments", "General", "Product", "Newsletter", "Admin", "Designers", "Customers"];
+    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Products", "Appointments", "General", "Product", "Newsletter", "Admin", "Registered Designers", "Customers"];
+    if (value?.active === "Designers") value.active = "Registered Designers";
+    if (value?.activeContentLink === "Designers") value.activeContentLink = "Registered Designers";
+    if (contentSectionIds[value?.active]) {
+      value.activeContentLink = value.active;
+      value.active = "Hero Banners";
+    }
     if (!value || !allowedItems.includes(value.active) || !allowedItems.includes(value.activeContentLink)) return fallback;
     return { active: value.active, activeContentLink: value.activeContentLink, expanded: { ...fallback.expanded, ...(value.expanded || {}) } };
   } catch {
     return fallback;
   }
+}
+
+function itemKey(item) {
+  return typeof item === "string" ? item : item.key;
+}
+
+function itemLabel(item) {
+  return typeof item === "string" ? item : item.label;
 }
 
 function hasStoredAdminSession() {
@@ -200,6 +230,7 @@ function hasStoredAdminSession() {
 }
 
 function select(item) {
+  item = itemKey(item);
   isMobileSidebarOpen.value = false;
   if (item === "Logout") {
     isAuthenticated.value = false;
@@ -207,20 +238,20 @@ function select(item) {
     void endSession();
     return;
   }
-  if (item === "Shop the Look") {
+  if (contentSectionIds[item]) {
     active.value = "Hero Banners";
     activeContentLink.value = item;
     expanded.value.Contents = true;
-    void nextTick(() => document.getElementById("shop-the-look")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    void nextTick(() => document.getElementById(contentSectionIds[item])?.scrollIntoView({ behavior: "smooth", block: "start" }));
     return;
   }
   active.value = item;
   activeContentLink.value = item;
-  if (["Hero Banners", "Shop the Look"].includes(item)) expanded.value.Contents = true;
-  if (["Admin", "Designers", "Customers"].includes(item)) expanded.value.Users = true;
+  if (["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers"].includes(item)) expanded.value.Contents = true;
+  if (["Admin", "Registered Designers", "Customers"].includes(item)) expanded.value.Users = true;
   if (item === "Products") void loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
   if (item === "Admin") void loadAdminUsers();
-  if (item === "Designers") void loadDesigners();
+  if (item === "Registered Designers") void loadDesigners();
 }
 
 function showAdminLanding() {
@@ -999,10 +1030,10 @@ function clearStoredAdminSession() {
 async function loadRestoredAdminPage() {
   if (active.value === "Products") await loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
   if (active.value === "Admin") await loadAdminUsers();
-  if (active.value === "Designers") await loadDesigners();
-  if (activeContentLink.value === "Shop the Look") {
+  if (active.value === "Registered Designers") await loadDesigners();
+  if (contentSectionIds[activeContentLink.value]) {
     await nextTick();
-    document.getElementById("shop-the-look")?.scrollIntoView({ block: "start" });
+    document.getElementById(contentSectionIds[activeContentLink.value])?.scrollIntoView({ block: "start" });
   }
 }
 
@@ -1316,12 +1347,12 @@ function showLogin() {
           >
             <button
               v-for="item in group.items"
-              :key="item"
+              :key="itemKey(item)"
               type="button"
-              :class="{ 'is-current': activeContentLink === item }"
+              :class="{ 'is-current': activeContentLink === itemKey(item) }"
               @click="select(item)"
             >
-              {{ item }}
+              {{ itemLabel(item) }}
             </button>
           </div>
         </section>
@@ -1340,7 +1371,7 @@ function showLogin() {
     </aside>
 
     <main class="admin-main">
-      <section class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--users': ['Admin', 'Designers', 'Customers'].includes(active) }">
+      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--users': ['Admin', 'Registered Designers', 'Customers'].includes(active) }">
         <h1>{{ adminTopbarTitle }}</h1>
         <template v-if="active === 'Hero Banners'">
           <Transition name="admin-editor-slide">
@@ -1523,6 +1554,9 @@ function showLogin() {
               </article>
             </div>
           </section>
+
+          <AdminContentManager section="main-categories" section-id="main-categories-display" :authorized-request="authorizedRequest" />
+          <AdminContentManager section="designer-profiles" section-id="content-designers" :authorized-request="authorizedRequest" />
 
           <Teleport to="body">
             <Transition name="admin-dialog-fade">
@@ -1798,7 +1832,7 @@ function showLogin() {
             </DataTable>
           </section>
         </template>
-        <template v-else-if="active === 'Designers'">
+        <template v-else-if="active === 'Registered Designers'">
           <section class="admin-users" aria-labelledby="designers-title">
             <p id="designers-title" class="admin-users__intro">Review registered designers and view their submitted account details.</p>
             <div class="admin-users__filters admin-users__filters--designers" aria-label="Designer filters">

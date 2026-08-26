@@ -1,5 +1,10 @@
 <script setup>
-import { designers } from '../data/designers.js'
+defineProps({
+  designers: {
+    type: Array,
+    required: true,
+  },
+})
 </script>
 
 <template>

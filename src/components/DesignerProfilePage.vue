@@ -27,7 +27,7 @@ defineProps({
       </div>
       <div>
         <p>{{ designer.profileDescription }}</p>
-        <a :href="designer.link" target="_blank" rel="noopener noreferrer">
+        <a v-if="designer.link" :href="designer.link" target="_blank" rel="noopener noreferrer">
           Visit {{ designer.name }} online <span>↗</span>
         </a>
       </div>

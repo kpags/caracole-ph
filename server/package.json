@@ -8,8 +8,9 @@
     "dev": "node --watch src/server.js",
     "db:generate": "prisma generate",
     "db:seed-system-admin": "node scripts/seed-system-administrator.js",
-    "db:deploy": "prisma migrate deploy && npm run db:seed-system-admin && node -e \"console.log('Database migrations and system-administrator seed completed successfully.')\"",
+    "db:deploy": "prisma migrate deploy && npm run db:seed-system-admin && npm run db:seed-initial-designers && node -e \"console.log('Database migrations and system-administrator seed completed successfully.')\"",
     "db:purge-rejected-designers": "node scripts/delete-rejected-designers.js",
+    "db:seed-initial-designers": "node scripts/seed-initial-designers.js",
     "shopify:sync-products": "node scripts/sync-shopify-products.js",
     "test": "node --test"
   },

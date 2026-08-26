@@ -4,14 +4,16 @@ RUN apk add --no-cache tzdata
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY server/package*.json ./
 RUN npm ci --omit=dev
 
-COPY prisma ./prisma
+COPY server/prisma ./prisma
 RUN npx prisma generate
 
-COPY src ./src
-COPY scripts ./scripts
+COPY server/src ./src
+COPY server/scripts ./scripts
+COPY assets/designers /seed-assets/designers
+ENV DESIGNER_SEED_DIR=/seed-assets/designers
 
 EXPOSE 3000
 

@@ -4,6 +4,7 @@ COPY admin/package*.json ./
 RUN npm ci
 COPY admin/ ./admin/
 COPY src ./src/
+COPY public ./public/
 ARG VITE_API_URL=http://localhost:3000
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm --prefix admin run build
