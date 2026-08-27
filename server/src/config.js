@@ -21,6 +21,8 @@ export const config = z.object({
   SMTP_PASSWORD: z.string().min(1),
   EMAIL_FROM: z.string().min(3),
   ADMIN_DASHBOARD_URL: z.string().url().default('http://localhost:5173/admin'),
+  ADMIN_INVITATION_SETUP_URL: z.string().url().default('http://localhost:8080/admin/setup-password'),
+  ADMIN_INVITATION_EXPIRES_IN: z.string().min(1).default('7d'),
   CLOUDFLARE_R2_ACCOUNT_ID: z.string().min(1),
   CLOUDFLARE_R2_BUCKET_NAME: z.string().min(1),
   CLOUDFLARE_R2_ACCESS_KEY_ID: z.string().min(1),

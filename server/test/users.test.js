@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adminRoleFor, matchesNameOrEmail, serializeAdminUser, serializeDesignerUser, visibleStaffWhere } from '../src/routes/users.js'
+import jwt from 'jsonwebtoken'
+import { adminRoleFor, createAdminInvitationToken, matchesNameOrEmail, serializeAdminUser, serializeDesignerUser, visibleStaffWhere } from '../src/routes/users.js'
 
 const designer = {
   id: 'f023ceec-77a3-4324-85c7-39ecbc747fad',
@@ -28,7 +29,7 @@ const designer = {
 test('serializes admin names and gives superuser precedence over staff', () => {
   assert.equal(adminRoleFor({ isStaff: true, isSuperuser: true }), 'Superuser')
   assert.deepEqual(serializeAdminUser({ ...designer, isStaff: true, isSuperuser: false }), {
-    id: designer.id, email: designer.email, name: 'Maria Santos', role: 'Staff'
+    id: designer.id, email: designer.email, name: 'Maria Santos', role: 'Staff', active: true
   })
 })
 
@@ -44,7 +45,19 @@ test('serializes complete designer details without authentication secrets', () =
 test('staff visibility excludes superusers while superusers can see both roles', () => {
   assert.equal(visibleStaffWhere(false).isSuperuser, false)
   assert.equal(visibleStaffWhere(true).isSuperuser, undefined)
+  assert.equal('isActive' in visibleStaffWhere(true), false)
   assert.equal(matchesNameOrEmail(designer, 'santos'), true)
   assert.equal(matchesNameOrEmail(designer, 'maria@example.com'), true)
   assert.equal(matchesNameOrEmail(designer, 'not-found'), false)
+})
+
+test('serializes invited administrator names and signs a scoped invitation token', () => {
+  const invited = { ...designer, firstName: 'Ava', lastName: 'Reyes', isStaff: true, isSuperuser: false }
+  assert.equal(serializeAdminUser(invited).name, 'Ava Reyes')
+  const config = { JWT_ACCESS_SECRET: 'a-secure-test-secret-that-is-long-enough', ADMIN_INVITATION_EXPIRES_IN: '1h' }
+  const token = createAdminInvitationToken(invited, config)
+  const claims = jwt.verify(token, config.JWT_ACCESS_SECRET)
+  assert.equal(claims.sub, invited.id)
+  assert.equal(claims.type, 'admin-invitation')
+  assert.equal(claims.email, invited.email)
 })

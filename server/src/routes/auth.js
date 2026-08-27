@@ -34,11 +34,10 @@ export function authRoutes({ prisma, config, auth, mailer }) {
     if (existing?.isEmailVerified) throw new HttpError(409, 'Email is already registered')
     const password = await bcrypt.hash(body.password, config.BCRYPT_SALT_ROUNDS)
     const user = existing
-      ? await prisma.user.update({ where: { id: existing.id }, data: { password, isActive: true, isDesigner: true, designer: { upsert: { create: designerData(body.designer), update: { ...designerData(body.designer), reviewStatus: 'PENDING', reviewedAt: null, reviewedById: null } } } }, include: { designer: true } })
-      : await prisma.user.create({ data: { email: body.email, password, isDesigner: true, designer: { create: designerData(body.designer) } }, include: { designer: true } })
-    await sendOtp(user, 'EMAIL_VERIFICATION', 'signup-otp')
+      ? await prisma.user.update({ where: { id: existing.id }, data: { password, isActive: true, isEmailVerified: true, isDesigner: true, designer: { upsert: { create: designerData(body.designer), update: { ...designerData(body.designer), reviewStatus: 'PENDING', reviewedAt: null, reviewedById: null } } } }, include: { designer: true } })
+      : await prisma.user.create({ data: { email: body.email, password, isActive: true, isEmailVerified: true, isDesigner: true, designer: { create: designerData(body.designer) } }, include: { designer: true } })
     await notifyDesignerRegistration(user)
-    res.status(201).json({ message: 'Registration received. Check your email for the verification OTP and registration confirmation.', user: { id: user.id, email: user.email } })
+    res.status(201).json({ message: 'Registration received. Check your email for a confirmation from Caracole.', user: { id: user.id, email: user.email } })
   }))
 
   router.post('/verify-email', asyncRoute(async (req, res) => {
@@ -53,7 +52,7 @@ export function authRoutes({ prisma, config, auth, mailer }) {
   router.post('/resend-verification', asyncRoute(async (req, res) => {
     const { email } = z.object({ email: emailSchema }).strict().parse(req.body)
     const user = await prisma.user.findUnique({ where: { email }, include: { designer: true } })
-    if (user?.isActive && !user.isEmailVerified) await sendOtp(user, 'EMAIL_VERIFICATION', 'signup-otp')
+    if (user?.isActive && !user.isEmailVerified && !user.isDesigner) await sendOtp(user, 'EMAIL_VERIFICATION', 'signup-otp')
     res.status(202).json({ message: 'If this account can be verified, a new OTP has been sent.' })
   }))
 
@@ -115,6 +114,32 @@ export function authRoutes({ prisma, config, auth, mailer }) {
       prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } })
     ])
     res.json({ message: 'Password reset successfully. Please log in again.' })
+  }))
+
+  router.post('/admin-invitations/complete', asyncRoute(async (req, res) => {
+    const body = z.object({ token: z.string().min(1), password: passwordSchema }).strict().parse(req.body)
+    let claims
+    try {
+      claims = jwt.verify(body.token, config.JWT_ACCESS_SECRET)
+    } catch {
+      throw new HttpError(400, 'This invitation link is invalid or has expired')
+    }
+    if (claims.type !== 'admin-invitation' || !claims.sub || !claims.email) throw new HttpError(400, 'This invitation link is invalid or has expired')
+
+    const password = await bcrypt.hash(body.password, config.BCRYPT_SALT_ROUNDS)
+    const activated = await prisma.user.updateMany({
+      where: {
+        id: claims.sub,
+        email: claims.email,
+        isActive: false,
+        OR: [{ isStaff: true }, { isSuperuser: true }]
+      },
+      data: { password, isActive: true, isEmailVerified: true }
+    })
+    if (!activated.count) throw new HttpError(400, 'This invitation link is invalid, expired, or has already been used')
+
+    await prisma.refreshToken.updateMany({ where: { userId: claims.sub, revokedAt: null }, data: { revokedAt: new Date() } })
+    res.json({ message: 'Your administrator account is active. You can now sign in.' })
   }))
 
   return router

@@ -39,6 +39,19 @@ function designerTemplateContext(designer, appConfig) {
   }
 }
 
+function adminInvitationTemplateContext(invitedUser, token, appConfig) {
+  const setupPasswordUrl = new URL(appConfig.ADMIN_INVITATION_SETUP_URL)
+  setupPasswordUrl.searchParams.set('token', token)
+
+  return {
+    appName: appConfig.APP_NAME,
+    firstName: invitedUser.firstName,
+    fullName: [invitedUser.firstName, invitedUser.lastName].filter(Boolean).join(' '),
+    role: invitedUser.isSuperuser ? 'Superuser' : 'Staff',
+    setupPasswordUrl: setupPasswordUrl.toString()
+  }
+}
+
 export function createMailer(config) {
   const transporter = nodemailer.createTransport({
     host: config.SMTP_HOST,
@@ -80,6 +93,33 @@ export function createMailer(config) {
         subject: `New Designer Registration — ${context.fullName}`,
         html: render(context),
         text: `A new designer registration is awaiting review. Name: ${context.fullName}; email: ${context.email}; mobile: ${context.mobileNumber}. Review it at ${context.adminDashboardUrl}.`
+      })
+    },
+    async sendDesignerReviewDecision({ designer, status, config: appConfig }) {
+      const approved = status === 'APPROVED'
+      const render = await loadTemplate(approved ? 'designer-approved' : 'designer-rejected')
+      const context = designerTemplateContext(designer, appConfig)
+      await transporter.sendMail({
+        from: appConfig.EMAIL_FROM,
+        to: designer.email,
+        subject: approved
+          ? `Welcome to ${appConfig.APP_NAME} as one of our designers!`
+          : `Thank you for your interest in ${appConfig.APP_NAME}`,
+        html: render(context),
+        text: approved
+          ? `Hello ${context.firstName}, your designer registration has been approved. Welcome to ${appConfig.APP_NAME} as one of our designers.`
+          : `Hello ${context.firstName}, thank you for taking the time to register as a designer with ${appConfig.APP_NAME}. After careful review, we are unable to move forward with your application at this time.`
+      })
+    },
+    async sendAdminInvitation({ user, token, config: appConfig }) {
+      const render = await loadTemplate('admin-invitation')
+      const context = adminInvitationTemplateContext(user, token, appConfig)
+      await transporter.sendMail({
+        from: appConfig.EMAIL_FROM,
+        to: user.email,
+        subject: `You're invited to become a ${appConfig.APP_NAME} administrator`,
+        html: render(context),
+        text: `Hello ${context.firstName}, you have been invited to join ${appConfig.APP_NAME} as a ${context.role} administrator. Set up your password here: ${context.setupPasswordUrl}`
       })
     }
   }

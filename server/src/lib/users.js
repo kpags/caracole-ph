@@ -3,6 +3,8 @@ export const userSelect = {
   createdAt: true,
   updatedAt: true,
   email: true,
+  firstName: true,
+  lastName: true,
   isDesigner: true,
   isStaff: true,
   isSuperuser: true,

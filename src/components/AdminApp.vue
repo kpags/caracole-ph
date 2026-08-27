@@ -8,6 +8,8 @@ import "quill/dist/quill.snow.css";
 import AdminContentManager from "./AdminContentManager.vue";
 
 const ADMIN_VIEW_STORAGE_KEY = "caracole-admin-view";
+const isAdminInvitationSetup = /^\/admin\/setup-password\/?$/.test(window.location.pathname);
+const adminInvitationToken = new URLSearchParams(window.location.search).get("token") || "";
 const contentSectionIds = {
   "Hero Banners": "hero-banners",
   "Shop the Look": "shop-the-look",
@@ -130,6 +132,19 @@ const isDesignerReviewOpen = ref(false);
 const isSavingDesignerReview = ref(false);
 const designerDetailsDialog = ref(null);
 const designerReviewDialog = ref(null);
+const isInviteUserOpen = ref(false);
+const isInvitingUser = ref(false);
+const inviteUserError = ref("");
+const adminUserInviteMessage = ref("");
+const inviteUserDialog = ref(null);
+const inviteUserForm = ref({ firstName: "", lastName: "", email: "", role: "staff" });
+const inviteSetupPassword = ref("");
+const inviteSetupConfirmPassword = ref("");
+const showInviteSetupPassword = ref(false);
+const showInviteSetupConfirmPassword = ref(false);
+const inviteSetupError = ref("");
+const inviteSetupMessage = ref("");
+const isCompletingInvite = ref(false);
 let shopTheLookQuill = null;
 let shopTheLookToastTimer = null;
 let adminProductSearchTimer = null;
@@ -141,7 +156,7 @@ const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((posi
 })));
 const shopTheLookPreview = computed(() => shopTheLookPreviewUrl.value || shopTheLookExistingImageUrl.value);
 const shopTheLookDescriptionLength = computed(() => getShopTheLookDescriptionText(shopTheLookDescription.value).length);
-const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value || isAdminProductDetailsOpen.value || isDesignerDetailsOpen.value || isDesignerReviewOpen.value);
+const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value || isAdminProductDetailsOpen.value || isDesignerDetailsOpen.value || isDesignerReviewOpen.value || isInviteUserOpen.value);
 const assignedProduct = (hotspot) => shopTheLookProductCache.value[hotspot.productId]
   || shopTheLookProducts.value.find((product) => (product.recordId || product.id) === hotspot.productId)
   || null;
@@ -177,14 +192,22 @@ const activeGroup = computed(() =>
       group.title === active.value || group.items.some((item) => itemKey(item) === active.value),
   ),
 );
-const adminTopbarTitle = computed(() =>
-  activeGroup.value?.items.length ? activeGroup.value.title : active.value,
-);
+const adminTopbarTitle = computed(() => {
+  if (activeGroup.value?.title === "Users") return itemLabel(activeGroup.value.items.find((item) => itemKey(item) === active.value) || active.value);
+  return activeGroup.value?.items.length ? activeGroup.value.title : active.value;
+});
 const currentAdminEmail = computed(() => {
   try {
     return JSON.parse(sessionStorage.getItem("caracole-admin-user") || "{}").email?.toLocaleLowerCase() || "";
   } catch {
     return "";
+  }
+});
+const currentAdminIsSuperuser = computed(() => {
+  try {
+    return Boolean(JSON.parse(sessionStorage.getItem("caracole-admin-user") || "{}").isSuperuser);
+  } catch {
+    return false;
   }
 });
 
@@ -420,8 +443,10 @@ watch(isAdminModalOpen, async (isOpen) => {
   if (appRoot) appRoot.inert = isOpen;
   if (!isOpen) return;
   await nextTick();
-  const dialog = isShopTheLookEditorOpen.value
-    ? shopTheLookEditorDialog.value
+  const dialog = isInviteUserOpen.value
+    ? inviteUserDialog.value
+    : isShopTheLookEditorOpen.value
+      ? shopTheLookEditorDialog.value
     : isShopTheLookDeleteConfirmationOpen.value
       ? shopTheLookDeleteDialog.value
       : isAdminProductDetailsOpen.value
@@ -602,6 +627,71 @@ function resetAdminUserFilters() {
   adminUserSearch.value = "";
   adminUserRole.value = "";
   void loadAdminUsers();
+}
+
+function openInviteUser() {
+  if (!currentAdminIsSuperuser.value) return;
+  inviteUserError.value = "";
+  adminUserInviteMessage.value = "";
+  inviteUserForm.value = { firstName: "", lastName: "", email: "", role: "staff" };
+  isInviteUserOpen.value = true;
+}
+
+function closeInviteUser() {
+  if (isInvitingUser.value) return;
+  isInviteUserOpen.value = false;
+  inviteUserError.value = "";
+}
+
+async function inviteAdminUser() {
+  inviteUserError.value = "";
+  isInvitingUser.value = true;
+  try {
+    const response = await authorizedRequest("/api/v1/users/admin-invitations", {
+      method: "POST",
+      body: JSON.stringify({
+        firstName: inviteUserForm.value.firstName.trim(),
+        lastName: inviteUserForm.value.lastName.trim(),
+        email: inviteUserForm.value.email.trim(),
+        role: inviteUserForm.value.role,
+      }),
+    });
+    isInviteUserOpen.value = false;
+    await loadAdminUsers();
+    usersError.value = "";
+    adminUserInviteMessage.value = response.message;
+  } catch (error) {
+    inviteUserError.value = error.message;
+  } finally {
+    isInvitingUser.value = false;
+  }
+}
+
+async function completeAdminInvitation() {
+  inviteSetupError.value = "";
+  if (!adminInvitationToken) {
+    inviteSetupError.value = "This invitation link is invalid or incomplete.";
+    return;
+  }
+  if (inviteSetupPassword.value.length < 8) {
+    inviteSetupError.value = "Use at least 8 characters for your password.";
+    return;
+  }
+  if (inviteSetupPassword.value !== inviteSetupConfirmPassword.value) {
+    inviteSetupError.value = "Passwords must match exactly.";
+    return;
+  }
+  isCompletingInvite.value = true;
+  try {
+    const response = await request("/api/v1/auth/admin-invitations/complete", { token: adminInvitationToken, password: inviteSetupPassword.value });
+    inviteSetupMessage.value = response.message;
+    inviteSetupPassword.value = "";
+    inviteSetupConfirmPassword.value = "";
+  } catch (error) {
+    inviteSetupError.value = error.message;
+  } finally {
+    isCompletingInvite.value = false;
+  }
 }
 
 async function loadDesigners() {
@@ -1152,7 +1242,27 @@ function showLogin() {
 </script>
 
 <template>
-  <section v-if="!isAuthenticated" class="admin-login-page">
+  <section v-if="isAdminInvitationSetup" class="admin-login-page">
+    <form class="admin-login-card" @submit.prevent="completeAdminInvitation">
+      <a class="admin-login-brand" href="/" aria-label="Caracole home">caracole</a>
+      <p class="admin-login-eyebrow">Caracole Philippines</p>
+      <h1>Set up your password</h1>
+      <p class="admin-login-copy">Complete your administrator registration by creating a secure password.</p>
+      <template v-if="!inviteSetupMessage">
+        <div class="admin-setup-requirements"><strong>Password requirements</strong><ul><li>At least 8 characters</li><li>Passwords must match exactly</li></ul></div>
+        <label for="admin-invite-password">Password</label>
+        <div class="admin-password-field"><input id="admin-invite-password" v-model="inviteSetupPassword" :type="showInviteSetupPassword ? 'text' : 'password'" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters" /><button type="button" :aria-label="showInviteSetupPassword ? 'Hide password' : 'Show password'" @click="showInviteSetupPassword = !showInviteSetupPassword"><i :class="showInviteSetupPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" aria-hidden="true"></i></button></div>
+        <label for="admin-invite-confirm-password">Confirm password</label>
+        <div class="admin-password-field"><input id="admin-invite-confirm-password" v-model="inviteSetupConfirmPassword" :type="showInviteSetupConfirmPassword ? 'text' : 'password'" autocomplete="new-password" minlength="8" required placeholder="Repeat your password" /><button type="button" :aria-label="showInviteSetupConfirmPassword ? 'Hide password' : 'Show password'" @click="showInviteSetupConfirmPassword = !showInviteSetupConfirmPassword"><i :class="showInviteSetupConfirmPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" aria-hidden="true"></i></button></div>
+      </template>
+      <p v-if="inviteSetupError" class="admin-form-error" role="alert">{{ inviteSetupError }}</p>
+      <p v-if="inviteSetupMessage" class="admin-reset-message" role="status">{{ inviteSetupMessage }}</p>
+      <button v-if="!inviteSetupMessage" class="admin-login-submit" type="submit" :disabled="isCompletingInvite">{{ isCompletingInvite ? 'Activating...' : 'Activate admin account' }}<i class="pi pi-arrow-right" aria-hidden="true"></i></button>
+      <a v-else class="admin-forgot-link" href="/admin">Go to admin sign in</a>
+    </form>
+  </section>
+
+  <section v-else-if="!isAuthenticated" class="admin-login-page">
     <form
       v-if="!isForgotPassword"
       class="admin-login-card"
@@ -1820,8 +1930,10 @@ function showLogin() {
             <div class="admin-users__filters" aria-label="Admin user filters">
               <label class="admin-users__search"><span><i class="pi pi-search" aria-hidden="true"></i> Search users</span><input v-model="adminUserSearch" type="search" placeholder="First name, last name, or email" @input="scheduleAdminUserSearch" /></label>
               <label><span>Role</span><select v-model="adminUserRole" @change="loadAdminUsers"><option value="">All roles</option><option value="staff">Staff</option><option value="superuser">Superuser</option></select></label>
-              <button type="button" @click="resetAdminUserFilters"><i class="pi pi-filter-slash" aria-hidden="true"></i> Reset filters</button>
+              <button class="admin-users__reset-filters" type="button" @click="resetAdminUserFilters"><i class="pi pi-filter-slash" aria-hidden="true"></i> Reset filters</button>
+              <button class="admin-users__invite" type="button" :disabled="!currentAdminIsSuperuser" :title="currentAdminIsSuperuser ? 'Invite an administrator' : 'Only superusers can invite administrators'" @click="openInviteUser"><i class="pi pi-user-plus" aria-hidden="true"></i> Invite User</button>
             </div>
+            <p v-if="adminUserInviteMessage" class="admin-users__success" role="status">{{ adminUserInviteMessage }}</p>
             <p v-if="usersError" class="admin-users__error" role="alert">{{ usersError }}</p>
             <DataTable :value="adminUsers" :loading="isLoadingAdminUsers" paginator :rows="10" class="admin-users__table" dataKey="id">
               <template #empty><div class="admin-users__empty">No admin users match the selected filters.</div></template>
@@ -1829,7 +1941,19 @@ function showLogin() {
               <Column header="Email" style="min-width: 290px"><template #body="{ data }">{{ data.email }} <small v-if="data.email.toLocaleLowerCase() === currentAdminEmail" class="admin-users__current-user">(you)</small></template></Column>
               <Column field="name" header="Name" style="min-width: 220px" />
               <Column header="Role" style="min-width: 150px"><template #body="{ data }"><span class="admin-users__role" :class="`is-${data.role.toLocaleLowerCase()}`">{{ data.role }}</span></template></Column>
+              <Column header="Active" style="min-width: 110px"><template #body="{ data }"><span class="admin-users__role" :class="data.active ? 'is-active' : 'is-inactive'">{{ data.active ? 'Yes' : 'No' }}</span></template></Column>
             </DataTable>
+
+            <Teleport to="body">
+              <Transition name="admin-dialog-fade">
+                <div v-if="isInviteUserOpen" class="admin-product-dialog-backdrop" role="presentation" @click.self="closeInviteUser">
+                  <section ref="inviteUserDialog" class="admin-invite-user-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-user-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, inviteUserDialog)">
+                    <header><div><p class="admin-eyebrow">Administrator access</p><h2 id="invite-user-title">Invite User</h2><p>Create an inactive account and email a secure password-setup link.</p></div><button type="button" aria-label="Close invite user dialog" :disabled="isInvitingUser" @click="closeInviteUser"><i class="pi pi-times" aria-hidden="true"></i></button></header>
+                    <form @submit.prevent="inviteAdminUser"><div class="admin-invite-user-dialog__fields"><label><span>First Name</span><input v-model="inviteUserForm.firstName" required maxlength="100" autocomplete="given-name" /></label><label><span>Last Name</span><input v-model="inviteUserForm.lastName" required maxlength="100" autocomplete="family-name" /></label><label class="admin-invite-user-dialog__email"><span>Email</span><input v-model="inviteUserForm.email" type="email" required maxlength="320" autocomplete="email" /></label><label><span>Role</span><select v-model="inviteUserForm.role"><option value="staff">Staff</option><option value="superuser">Superuser</option></select></label></div><p v-if="inviteUserError" class="admin-users__error" role="alert">{{ inviteUserError }}</p><footer><button type="button" :disabled="isInvitingUser" @click="closeInviteUser">Cancel</button><button type="submit" :disabled="isInvitingUser">{{ isInvitingUser ? 'Sending…' : 'Send Invitation' }}</button></footer></form>
+                  </section>
+                </div>
+              </Transition>
+            </Teleport>
           </section>
         </template>
         <template v-else-if="active === 'Registered Designers'">

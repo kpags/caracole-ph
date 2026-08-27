@@ -45,7 +45,7 @@ export function createApp({ prisma, config, auth, mailer, storage, products }) {
   app.use('/api/v1/hero-banners', heroBannersRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/shop-the-look', shopTheLookRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/content', contentDisplaysRoutes({ prisma, storage, authenticate, authorize }))
-  app.use('/api/v1/users', usersRoutes({ prisma, authenticate, authorize }))
+  app.use('/api/v1/users', usersRoutes({ prisma, config, mailer, authenticate, authorize }))
   app.use('/api/v1/admin/products', adminProductsRoutes({ prisma, authenticate, authorize }))
   app.use('/api/v1/products', productsRoutes({ prisma }))
   app.use((_req, _res, next) => next(new HttpError(404, 'Route not found')))

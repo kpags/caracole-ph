@@ -11,4 +11,5 @@ RUN npm --prefix admin run build
 
 FROM nginx:1.27-alpine
 COPY --from=build /app/admin/dist /usr/share/nginx/html
+COPY admin/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

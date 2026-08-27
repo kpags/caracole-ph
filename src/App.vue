@@ -517,6 +517,7 @@ const sampleAccount = {
 const designerOpen = ref(false);
 const designerSubmitted = ref(false);
 const designerError = ref("");
+const designerFieldErrors = reactive({});
 const isSubmittingDesigner = ref(false);
 const showDesignerPassword = ref(false);
 const showDesignerConfirmPassword = ref(false);
@@ -992,6 +993,7 @@ function openDesigner() {
   closeCart();
   closeSearch();
   designerError.value = "";
+  clearDesignerFieldErrors();
   designerSubmitted.value = false;
   showDesignerPassword.value = false;
   showDesignerConfirmPassword.value = false;
@@ -1001,6 +1003,7 @@ function openDesigner() {
 function closeDesigner() {
   designerOpen.value = false;
   designerError.value = "";
+  clearDesignerFieldErrors();
   showDesignerPassword.value = false;
   showDesignerConfirmPassword.value = false;
 }
@@ -1067,25 +1070,72 @@ function closeSearch() {
   searchOpen.value = false;
 }
 
-function designerPasswordError() {
-  if (designerForm.password.length < 8) {
-    return "Password must be at least 8 characters.";
+function clearDesignerFieldErrors() {
+  Object.keys(designerFieldErrors).forEach((field) => delete designerFieldErrors[field]);
+}
+
+function setDesignerFieldError(field, message) {
+  if (!designerFieldErrors[field]) designerFieldErrors[field] = message;
+}
+
+function validateDesignerApplication() {
+  clearDesignerFieldErrors();
+
+  if (!designerForm.firstName.trim()) setDesignerFieldError("firstName", "First name is required.");
+  if (!designerForm.lastName.trim()) setDesignerFieldError("lastName", "Last name is required.");
+  if (!designerForm.email.trim()) {
+    setDesignerFieldError("email", "Email address is required.");
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(designerForm.email.trim())) {
+    setDesignerFieldError("email", "Enter a valid email address.");
   }
-  if (designerForm.password !== designerForm.confirmPassword) {
-    return "The passwords do not match.";
+  if (!/^\+63\d{10}$/.test(designerForm.mobile.trim())) {
+    setDesignerFieldError("mobile", "Enter a mobile number in the format +63 followed by 10 digits.");
   }
-  return "";
+  if (!designerForm.birthDate) setDesignerFieldError("birthDate", "Birth date is required.");
+  if (!designerForm.company.trim()) setDesignerFieldError("company", "Company is required.");
+  if (!designerForm.officeAddress.trim()) setDesignerFieldError("officeAddress", "Office address is required.");
+  if (designerForm.website.trim()) {
+    try {
+      new URL(designerForm.website.trim());
+    } catch {
+      setDesignerFieldError("website", "Enter a valid website URL, including https://.");
+    }
+  }
+  if (designerForm.password.length < 8) setDesignerFieldError("password", "Password must be at least 8 characters.");
+  if (designerForm.password !== designerForm.confirmPassword) setDesignerFieldError("confirmPassword", "Passwords must match exactly.");
+  if (!designerForm.touchpoint) setDesignerFieldError("touchpoint", "Select a touchpoint.");
+  if (!designerForm.discovery) setDesignerFieldError("discovery", "Select how you heard about us.");
+  if (!designerForm.termsAccepted) setDesignerFieldError("termsAccepted", "You must accept the Terms & Conditions and Privacy Policy.");
+  if (!designerForm.captchaConfirmed) setDesignerFieldError("captchaConfirmed", "Confirm that you are not a robot.");
+
+  return Object.keys(designerFieldErrors).length === 0;
+}
+
+function applyDesignerApiErrors(errors) {
+  const fieldByPath = {
+    email: "email",
+    password: "password",
+    "designer.firstName": "firstName",
+    "designer.lastName": "lastName",
+    "designer.mobileNumber": "mobile",
+    "designer.birthdate": "birthDate",
+    "designer.company": "company",
+    "designer.officeAddress": "officeAddress",
+    "designer.companyWebsite": "website",
+    "designer.touchpoint": "touchpoint",
+    "designer.howDidYouHearAboutUs": "discovery",
+  };
+  errors?.forEach((issue) => {
+    const field = fieldByPath[issue.path?.join(".")];
+    if (field) setDesignerFieldError(field, issue.message);
+  });
 }
 
 async function submitDesignerApplication() {
-  const passwordError = designerPasswordError();
-  if (passwordError) {
-    designerError.value = passwordError;
-    return;
-  }
+  designerError.value = "";
+  if (!validateDesignerApplication()) return;
 
   isSubmittingDesigner.value = true;
-  designerError.value = "";
   try {
     const response = await fetch(`${apiBaseUrl}/api/v1/auth/register/designer`, {
       method: "POST",
@@ -1107,9 +1157,13 @@ async function submitDesignerApplication() {
       }),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || "We could not submit your registration. Please try again.");
+    if (!response.ok) {
+      applyDesignerApiErrors(payload.errors);
+      throw new Error(payload.message || "We could not submit your registration. Please try again.");
+    }
 
     designerSubmitted.value = true;
+    clearDesignerFieldErrors();
     Object.assign(designerForm, {
       firstName: "",
       lastName: "",
@@ -1127,7 +1181,7 @@ async function submitDesignerApplication() {
       captchaConfirmed: false,
     });
   } catch (error) {
-    designerError.value = error.message || "We could not submit your registration. Please try again.";
+    if (!Object.keys(designerFieldErrors).length) designerError.value = error.message || "We could not submit your registration. Please try again.";
   } finally {
     isSubmittingDesigner.value = false;
   }
@@ -1549,7 +1603,7 @@ onBeforeUnmount(() => {
             design professionals.
           </p>
         </header>
-        <form @submit.prevent="submitDesignerApplication">
+        <form novalidate @submit.prevent="submitDesignerApplication">
           <div class="designer-fields designer-fields--two">
             <label
               ><span>First name</span
@@ -1557,24 +1611,24 @@ onBeforeUnmount(() => {
                 v-model.trim="designerForm.firstName"
                 type="text"
                 autocomplete="given-name"
-                required
-            /></label>
+                :aria-invalid="designerFieldErrors.firstName ? 'true' : undefined"
+            /><small v-if="designerFieldErrors.firstName" class="designer-field-error" role="alert">{{ designerFieldErrors.firstName }}</small></label>
             <label
               ><span>Last name</span
               ><input
                 v-model.trim="designerForm.lastName"
                 type="text"
                 autocomplete="family-name"
-                required
-            /></label>
+                :aria-invalid="designerFieldErrors.lastName ? 'true' : undefined"
+            /><small v-if="designerFieldErrors.lastName" class="designer-field-error" role="alert">{{ designerFieldErrors.lastName }}</small></label>
             <label
               ><span>Email address</span
               ><input
                 v-model.trim="designerForm.email"
                 type="email"
                 autocomplete="email"
-                required
-            /></label>
+                :aria-invalid="designerFieldErrors.email ? 'true' : undefined"
+            /><small v-if="designerFieldErrors.email" class="designer-field-error" role="alert">{{ designerFieldErrors.email }}</small></label>
             <label
               ><span>Mobile number</span
               ><input
@@ -1582,24 +1636,24 @@ onBeforeUnmount(() => {
                 type="tel"
                 autocomplete="tel"
                 placeholder="+63"
-                required
-            /></label>
+                :aria-invalid="designerFieldErrors.mobile ? 'true' : undefined"
+            /><small v-if="designerFieldErrors.mobile" class="designer-field-error" role="alert">{{ designerFieldErrors.mobile }}</small></label>
             <label
               ><span>Birth date</span
               ><input
                 v-model="designerForm.birthDate"
                 type="date"
                 autocomplete="bday"
-                required
-            /></label>
+                :aria-invalid="designerFieldErrors.birthDate ? 'true' : undefined"
+            /><small v-if="designerFieldErrors.birthDate" class="designer-field-error" role="alert">{{ designerFieldErrors.birthDate }}</small></label>
             <label
               ><span>Company</span
               ><input
                 v-model.trim="designerForm.company"
                 type="text"
                 autocomplete="organization"
-                required
-            /></label>
+                :aria-invalid="designerFieldErrors.company ? 'true' : undefined"
+            /><small v-if="designerFieldErrors.company" class="designer-field-error" role="alert">{{ designerFieldErrors.company }}</small></label>
           </div>
           <div class="designer-fields">
             <label
@@ -1608,15 +1662,16 @@ onBeforeUnmount(() => {
                 v-model.trim="designerForm.officeAddress"
                 type="text"
                 autocomplete="street-address"
-                required
-            /></label>
+                :aria-invalid="designerFieldErrors.officeAddress ? 'true' : undefined"
+            /><small v-if="designerFieldErrors.officeAddress" class="designer-field-error" role="alert">{{ designerFieldErrors.officeAddress }}</small></label>
             <label
               ><span>Company website</span
               ><input
                 v-model.trim="designerForm.website"
                 type="url"
                 placeholder="https://"
-            /></label>
+                :aria-invalid="designerFieldErrors.website ? 'true' : undefined"
+            /><small v-if="designerFieldErrors.website" class="designer-field-error" role="alert">{{ designerFieldErrors.website }}</small></label>
           </div>
           <div class="designer-fields designer-fields--two">
             <label>
@@ -1626,11 +1681,11 @@ onBeforeUnmount(() => {
                   v-model="designerForm.password"
                   :type="showDesignerPassword ? 'text' : 'password'"
                   autocomplete="new-password"
-                  minlength="8"
-                  required
+                  :aria-invalid="designerFieldErrors.password ? 'true' : undefined"
                 />
                 <button type="button" :aria-label="showDesignerPassword ? 'Hide password' : 'Show password'" @click="showDesignerPassword = !showDesignerPassword"><i :class="showDesignerPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" aria-hidden="true"></i></button>
               </span>
+              <small v-if="designerFieldErrors.password" class="designer-field-error" role="alert">{{ designerFieldErrors.password }}</small>
             </label>
             <label>
               <span>Confirm password</span>
@@ -1639,27 +1694,26 @@ onBeforeUnmount(() => {
                   v-model="designerForm.confirmPassword"
                   :type="showDesignerConfirmPassword ? 'text' : 'password'"
                   autocomplete="new-password"
-                  minlength="8"
-                  :aria-invalid="designerForm.confirmPassword ? designerForm.password !== designerForm.confirmPassword : undefined"
-                  required
+                  :aria-invalid="designerFieldErrors.confirmPassword ? 'true' : undefined"
                 />
                 <button type="button" :aria-label="showDesignerConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'" @click="showDesignerConfirmPassword = !showDesignerConfirmPassword"><i :class="showDesignerConfirmPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" aria-hidden="true"></i></button>
               </span>
+              <small v-if="designerFieldErrors.confirmPassword" class="designer-field-error" role="alert">{{ designerFieldErrors.confirmPassword }}</small>
             </label>
             <label
               ><span>Touchpoint</span
-              ><select v-model="designerForm.touchpoint" required>
+              ><select v-model="designerForm.touchpoint" :aria-invalid="designerFieldErrors.touchpoint ? 'true' : undefined">
                 <option value="" disabled>Select touchpoint</option>
                 <option>Caracole showroom</option>
                 <option>Dexterton showroom</option>
                 <option>Design consultation</option>
                 <option>Industry event</option>
                 <option>Online</option>
-              </select></label
+              </select><small v-if="designerFieldErrors.touchpoint" class="designer-field-error" role="alert">{{ designerFieldErrors.touchpoint }}</small></label
             >
             <label
               ><span>How did you hear about us?</span
-              ><select v-model="designerForm.discovery" required>
+              ><select v-model="designerForm.discovery" :aria-invalid="designerFieldErrors.discovery ? 'true' : undefined">
                 <option value="" disabled>Select an option</option>
                 <option>Social media</option>
                 <option>Search engine</option>
@@ -1667,25 +1721,26 @@ onBeforeUnmount(() => {
                 <option>Showroom visit</option>
                 <option>Design event</option>
                 <option>Other</option>
-              </select></label
+              </select><small v-if="designerFieldErrors.discovery" class="designer-field-error" role="alert">{{ designerFieldErrors.discovery }}</small></label
             >
           </div>
           <label class="designer-consent"
             ><input
               v-model="designerForm.termsAccepted"
               type="checkbox"
-              required
+              :aria-invalid="designerFieldErrors.termsAccepted ? 'true' : undefined"
             /><span
               >I agree to the <u>Terms &amp; Conditions</u> and
               <u>Privacy Policy</u>.</span
             ></label
           >
+          <small v-if="designerFieldErrors.termsAccepted" class="designer-field-error" role="alert">{{ designerFieldErrors.termsAccepted }}</small>
           <div class="designer-form__foot">
             <label class="designer-captcha"
               ><input
-                v-model="designerForm.captchaConfirmed"
-                type="checkbox"
-                required
+              v-model="designerForm.captchaConfirmed"
+              type="checkbox"
+                :aria-invalid="designerFieldErrors.captchaConfirmed ? 'true' : undefined"
               /><span
                 ><b>I'm not a robot</b
                 ><small>Prototype verification</small></span
@@ -1695,6 +1750,7 @@ onBeforeUnmount(() => {
               {{ isSubmittingDesigner ? "Registering…" : "Register" }} <span>→</span>
             </button>
           </div>
+          <small v-if="designerFieldErrors.captchaConfirmed" class="designer-field-error" role="alert">{{ designerFieldErrors.captchaConfirmed }}</small>
           <p v-if="designerError" class="auth-error" role="alert">
             {{ designerError }}
           </p>

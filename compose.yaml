@@ -67,6 +67,7 @@ services:
       PORT: 3000
       CORS_ORIGIN: http://localhost:${CLIENT_PORT:-5173},http://localhost:${ADMIN_PORT:-8080}
       ADMIN_DASHBOARD_URL: http://localhost:${ADMIN_PORT:-8080}
+      ADMIN_INVITATION_SETUP_URL: http://localhost:${ADMIN_PORT:-8080}/admin/setup-password
     ports:
       - "${API_PORT:-3000}:3000"
     depends_on:

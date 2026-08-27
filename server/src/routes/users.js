@@ -1,4 +1,7 @@
+import bcrypt from 'bcryptjs'
+import crypto from 'node:crypto'
 import express from 'express'
+import jwt from 'jsonwebtoken'
 import { z } from 'zod'
 import { asyncRoute, HttpError } from '../lib/http.js'
 import { designerData, userSelect } from '../lib/users.js'
@@ -13,6 +16,21 @@ const reviewSchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED'])
 }).strict()
 
+const adminInvitationSchema = z.object({
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
+  email: z.string().trim().toLowerCase().email().max(320),
+  role: z.enum(['staff', 'superuser'])
+}).strict()
+
+export function createAdminInvitationToken(user, config) {
+  return jwt.sign(
+    { sub: user.id, email: user.email, type: 'admin-invitation' },
+    config.JWT_ACCESS_SECRET,
+    { expiresIn: config.ADMIN_INVITATION_EXPIRES_IN }
+  )
+}
+
 export function adminRoleFor(user) {
   if (user.isSuperuser) return 'Superuser'
   if (user.isStaff) return 'Staff'
@@ -20,13 +38,14 @@ export function adminRoleFor(user) {
 }
 
 export function serializeAdminUser(user) {
-  const firstName = user.designer?.firstName?.trim() || ''
-  const lastName = user.designer?.lastName?.trim() || ''
+  const firstName = user.firstName?.trim() || user.designer?.firstName?.trim() || ''
+  const lastName = user.lastName?.trim() || user.designer?.lastName?.trim() || ''
   return {
     id: user.id,
     email: user.email,
     name: [firstName, lastName].filter(Boolean).join(' ') || '--',
-    role: adminRoleFor(user)
+    role: adminRoleFor(user),
+    active: user.isActive
   }
 }
 
@@ -55,7 +74,6 @@ export function serializeDesignerUser(user) {
 
 export function visibleStaffWhere(isSuperuser) {
   return {
-    isActive: true,
     OR: [{ isStaff: true }, { isSuperuser: true }],
     ...(isSuperuser ? {} : { isSuperuser: false })
   }
@@ -69,7 +87,7 @@ export function matchesNameOrEmail(user, search) {
     .some((value) => value.toLocaleLowerCase().includes(query))
 }
 
-export function usersRoutes({ prisma, authenticate, authorize }) {
+export function usersRoutes({ prisma, config, mailer, authenticate, authorize }) {
   const router = express.Router()
   router.use(authenticate)
 
@@ -91,6 +109,35 @@ export function usersRoutes({ prisma, authenticate, authorize }) {
     const users = await prisma.user.findMany({ where: visibleStaffWhere(req.user.isSuperuser), select: userSelect, orderBy: { createdAt: 'desc' } })
     const visible = users.filter((user) => matchesNameOrEmail(user, query.search) && (!query.role || adminRoleFor(user).toLocaleLowerCase() === query.role))
     res.json({ users: visible.map(serializeAdminUser) })
+  }))
+
+  router.post('/admin-invitations', authorize('superuser'), asyncRoute(async (req, res) => {
+    const body = adminInvitationSchema.parse(req.body)
+    const existing = await prisma.user.findUnique({ where: { email: body.email }, select: { id: true } })
+    if (existing) throw new HttpError(409, 'An account with this email already exists')
+
+    const user = await prisma.user.create({
+      data: {
+        email: body.email,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        password: await bcrypt.hash(crypto.randomBytes(32).toString('base64url'), config.BCRYPT_SALT_ROUNDS),
+        isStaff: body.role === 'staff',
+        isSuperuser: body.role === 'superuser',
+        isActive: false,
+        isEmailVerified: false
+      },
+      select: userSelect
+    })
+
+    try {
+      await mailer.sendAdminInvitation({ user, token: createAdminInvitationToken(user, config), config })
+    } catch (error) {
+      await prisma.user.delete({ where: { id: user.id } })
+      throw error
+    }
+
+    res.status(201).json({ message: `An invitation was sent to ${user.email}.`, user: serializeAdminUser(user) })
   }))
 
   router.get('/designers', authorize('staff'), asyncRoute(async (_req, res) => {
@@ -119,6 +166,7 @@ export function usersRoutes({ prisma, authenticate, authorize }) {
       data: { reviewStatus: status, reviewedAt: new Date(), reviewedById: req.user.id },
       include: { user: { select: { id: true, email: true, isActive: true, isEmailVerified: true } }, reviewedBy: { select: { id: true, email: true } } }
     })
+    await mailer.sendDesignerReviewDecision({ designer: { ...designer, email: designer.user.email }, status, config })
     res.json({ designer: serializeDesignerUser({ ...designer.user, designer }) })
   }))
 
