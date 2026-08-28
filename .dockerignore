@@ -1,6 +1,7 @@
 node_modules/
 admin/node_modules/
 work/
+web_scrape/
 dist/
 .nuxt/
 .output/

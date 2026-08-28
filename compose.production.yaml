@@ -1,0 +1,96 @@
+services:
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        format: raw
+    environment:
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: 3000
+      # Browser requests use the published API port; SSR uses Docker DNS.
+      NUXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-3000}
+      NUXT_API_INTERNAL_BASE_URL: http://api:3000
+    ports:
+      - "${CLIENT_PORT:-5173}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  admin:
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+      args:
+        VITE_API_URL: ${ADMIN_API_URL:-http://localhost:3000}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${ADMIN_PORT:-8080}:80"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    env_file: .env
+    command: npm run db:deploy
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 3000
+      CORS_ORIGIN: http://localhost:${CLIENT_PORT:-5173},http://localhost:${ADMIN_PORT:-8080}
+      ADMIN_DASHBOARD_URL: http://localhost:${ADMIN_PORT:-8080}
+      ADMIN_INVITATION_SETUP_URL: http://localhost:${ADMIN_PORT:-8080}/admin/setup-password
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  catalog-scheduler:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Asia/Manila
+    command: sh scripts/run-shopify-scheduler.sh
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:

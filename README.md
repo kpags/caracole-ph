@@ -47,3 +47,15 @@ docker compose up
 ```
 
 Open `http://127.0.0.1:5555` (or the value of `PRISMA_STUDIO_PORT`) to inspect or remove local test data.
+
+## Production stack without Prisma Studio
+
+Use the standalone production Compose file when Prisma Studio must not be
+built, started, or exposed:
+
+```sh
+docker compose -f compose.production.yaml up --build
+```
+
+It starts the storefront, Vue admin, API, PostgreSQL, migrations, and catalog
+scheduler. It does not include a Prisma Studio service or bind port `5555`.
