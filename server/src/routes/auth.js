@@ -7,6 +7,33 @@ import { designerSchema, emailSchema, otpSchema, passwordSchema } from '../lib/v
 import { designerData } from '../lib/users.js'
 
 const credentialsSchema = z.object({ email: emailSchema, password: passwordSchema }).strict()
+export const customerRegistrationSchema = z.object({
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
+  email: emailSchema,
+  password: passwordSchema,
+  confirmPassword: z.string()
+}).strict().refine((body) => body.password === body.confirmPassword, {
+  path: ['confirmPassword'],
+  message: 'Passwords must match exactly'
+})
+
+export function isPendingCustomer(user) {
+  return Boolean(user && !user.isActive && !user.isEmailVerified && !user.isDesigner && !user.isStaff && !user.isSuperuser)
+}
+
+function serializeAuthenticatedUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
+    designer: user.designer,
+    isDesigner: user.isDesigner,
+    isStaff: user.isStaff,
+    isSuperuser: user.isSuperuser
+  }
+}
 
 export function designerRegistrationNotificationRecipients(config) {
   return [config.SMTP_USER]
@@ -17,7 +44,7 @@ export function authRoutes({ prisma, config, auth, mailer }) {
 
   async function sendOtp(user, purpose, template) {
     const otp = await auth.createOtp(user.id, purpose)
-    await mailer.sendOtp({ template, email: user.email, firstName: user.designer?.firstName ?? 'Administrator', otp, config })
+    await mailer.sendOtp({ template, email: user.email, firstName: user.firstName || user.designer?.firstName || 'Caracole customer', otp, config })
   }
 
   async function notifyDesignerRegistration(user) {
@@ -40,19 +67,38 @@ export function authRoutes({ prisma, config, auth, mailer }) {
     res.status(201).json({ message: 'Registration received. Check your email for a confirmation from Caracole.', user: { id: user.id, email: user.email } })
   }))
 
+  router.post('/register', asyncRoute(async (req, res) => {
+    const body = customerRegistrationSchema.parse(req.body)
+    const existing = await prisma.user.findUnique({ where: { email: body.email }, include: { designer: true } })
+    if (existing && !isPendingCustomer(existing)) throw new HttpError(409, 'Email is already registered')
+
+    const password = await bcrypt.hash(body.password, config.BCRYPT_SALT_ROUNDS)
+    const user = existing
+      ? await prisma.user.update({
+        where: { id: existing.id },
+        data: { firstName: body.firstName, lastName: body.lastName, password, isActive: false, isEmailVerified: false }
+      })
+      : await prisma.user.create({
+        data: { email: body.email, firstName: body.firstName, lastName: body.lastName, password, isActive: false, isEmailVerified: false }
+      })
+
+    await sendOtp(user, 'EMAIL_VERIFICATION', 'signup-otp')
+    res.status(existing ? 200 : 201).json({ message: 'A verification code has been sent to your email address.', user: { id: user.id, email: user.email } })
+  }))
+
   router.post('/verify-email', asyncRoute(async (req, res) => {
     const body = z.object({ email: emailSchema, otp: otpSchema }).strict().parse(req.body)
     const user = await prisma.user.findUnique({ where: { email: body.email } })
-    if (!user || !user.isActive) throw new HttpError(400, 'Invalid or expired OTP')
+    if (!isPendingCustomer(user)) throw new HttpError(400, 'Invalid or expired OTP')
     await auth.verifyOtp(user.id, 'EMAIL_VERIFICATION', body.otp)
-    await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true } })
-    res.json({ message: 'Email verified successfully.' })
+    await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true, isActive: true } })
+    res.json({ message: 'Email verified successfully. Your account is now active.' })
   }))
 
   router.post('/resend-verification', asyncRoute(async (req, res) => {
     const { email } = z.object({ email: emailSchema }).strict().parse(req.body)
     const user = await prisma.user.findUnique({ where: { email }, include: { designer: true } })
-    if (user?.isActive && !user.isEmailVerified && !user.isDesigner) await sendOtp(user, 'EMAIL_VERIFICATION', 'signup-otp')
+    if (isPendingCustomer(user)) await sendOtp(user, 'EMAIL_VERIFICATION', 'signup-otp')
     res.status(202).json({ message: 'If this account can be verified, a new OTP has been sent.' })
   }))
 
@@ -63,7 +109,7 @@ export function authRoutes({ prisma, config, auth, mailer }) {
     if (!user.isActive) throw new HttpError(403, 'This account is disabled')
     if (!user.isEmailVerified) throw new HttpError(403, 'Verify your email before logging in')
     const tokens = await auth.issueTokens(user)
-    res.json({ user: { id: user.id, email: user.email, designer: user.designer, isDesigner: user.isDesigner, isStaff: user.isStaff, isSuperuser: user.isSuperuser }, ...tokens })
+    res.json({ user: serializeAuthenticatedUser(user), ...tokens })
   }))
 
   router.post('/admin/login', asyncRoute(async (req, res) => {
@@ -85,7 +131,7 @@ export function authRoutes({ prisma, config, auth, mailer }) {
     const record = await prisma.refreshToken.findUnique({ where: { id: claims.jti }, include: { user: { include: { designer: true } } } })
     if (!record || record.revokedAt || record.expiresAt <= new Date() || !(await bcrypt.compare(refreshToken, record.tokenHash)) || !record.user.isActive || !record.user.isEmailVerified) throw new HttpError(401, 'Invalid refresh token')
     await prisma.refreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } })
-    res.json(await auth.issueTokens(record.user))
+    res.json({ user: serializeAuthenticatedUser(record.user), ...await auth.issueTokens(record.user) })
   }))
 
   router.post('/logout', asyncRoute(async (req, res) => {

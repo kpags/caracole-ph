@@ -501,22 +501,24 @@ const shopTheLookViewer = ref(null);
 const shopTheLookHover = ref({ productId: null, source: null });
 const shopTheLookProductPreview = ref(null);
 const categoryTimers = new Map();
+const CUSTOMER_AUTH_STORAGE_KEY = "caracole-customer-auth";
+const CUSTOMER_VERIFICATION_STORAGE_KEY = "caracole-customer-verification-email";
 const accountView = ref(null);
 const currentUser = ref(null);
 const authError = ref("");
+const authMessage = ref("");
+const isSubmittingCustomerAuth = ref(false);
 const loginForm = reactive({ email: "", password: "" });
 const registerForm = reactive({
   firstName: "",
   lastName: "",
   email: "",
   password: "",
+  confirmPassword: "",
 });
-const sampleAccount = {
-  firstName: "John",
-  lastName: "Doe",
-  email: "johndoe@gmail.com",
-  password: "12345",
-};
+const verificationForm = reactive({ email: "", otp: "" });
+const showRegisterPassword = ref(false);
+const showRegisterConfirmPassword = ref(false);
 const designerOpen = ref(false);
 const designerSubmitted = ref(false);
 const designerError = ref("");
@@ -867,22 +869,31 @@ function handleKey(event) {
   }
 }
 
-function storedAccounts() {
-  try {
-    const accounts = JSON.parse(
-      localStorage.getItem("caracole-accounts") || "[]",
-    );
-    const sampleIndex = accounts.findIndex(
-      (account) => account.email.toLowerCase() === sampleAccount.email,
-    );
-    if (sampleIndex === -1) accounts.push(sampleAccount);
-    else accounts[sampleIndex] = sampleAccount;
-    localStorage.setItem("caracole-accounts", JSON.stringify(accounts));
-    return accounts;
-  } catch {
-    localStorage.setItem("caracole-accounts", JSON.stringify([sampleAccount]));
-    return [sampleAccount];
-  }
+async function customerAuthRequest(path, body) {
+  const response = await fetch(`${apiBaseUrl}/api/v1/auth${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || "Unable to complete your request.");
+  return payload;
+}
+
+function pendingVerificationEmail() {
+  return sessionStorage.getItem(CUSTOMER_VERIFICATION_STORAGE_KEY) || "";
+}
+
+function setPendingVerification(email) {
+  verificationForm.email = email;
+  verificationForm.otp = "";
+  sessionStorage.setItem(CUSTOMER_VERIFICATION_STORAGE_KEY, email);
+}
+
+function clearPendingVerification() {
+  verificationForm.email = "";
+  verificationForm.otp = "";
+  sessionStorage.removeItem(CUSTOMER_VERIFICATION_STORAGE_KEY);
 }
 
 function openAccount() {
@@ -891,16 +902,21 @@ function openAccount() {
   closeDesigner();
   closeSearch();
   authError.value = "";
-  accountView.value = currentUser.value ? "account" : "login";
+  authMessage.value = "";
+  const pendingEmail = pendingVerificationEmail();
+  if (pendingEmail) verificationForm.email = pendingEmail;
+  accountView.value = currentUser.value ? "account" : (pendingEmail ? "verify" : "login");
 }
 
 function closeAccount() {
   accountView.value = null;
   authError.value = "";
+  authMessage.value = "";
 }
 
 function showRegistration() {
   authError.value = "";
+  authMessage.value = "";
   accountView.value = "register";
 }
 
@@ -909,7 +925,8 @@ function showLogin() {
   accountView.value = "login";
 }
 
-function persistSession(account) {
+function persistSession(payload) {
+  const account = payload.user;
   const session = {
     firstName: account.firstName,
     lastName: account.lastName,
@@ -917,52 +934,98 @@ function persistSession(account) {
   };
   currentUser.value = session;
   localStorage.setItem("caracole-session", JSON.stringify(session));
+  sessionStorage.setItem(CUSTOMER_AUTH_STORAGE_KEY, JSON.stringify({ accessToken: payload.accessToken, refreshToken: payload.refreshToken }));
   syncCart(getCart());
 }
 
-function login() {
-  const account = storedAccounts().find(
-    (item) =>
-      item.email.toLowerCase() === loginForm.email.trim().toLowerCase() &&
-      item.password === loginForm.password,
-  );
-  if (!account) {
-    authError.value = "The email address or password is incorrect.";
-    return;
+async function login() {
+  authError.value = "";
+  authMessage.value = "";
+  isSubmittingCustomerAuth.value = true;
+  try {
+    const payload = await customerAuthRequest("/login", { email: loginForm.email.trim().toLowerCase(), password: loginForm.password });
+    persistSession(payload);
+    loginForm.email = "";
+    loginForm.password = "";
+    accountView.value = "account";
+  } catch (error) {
+    authError.value = error.message;
+  } finally {
+    isSubmittingCustomerAuth.value = false;
   }
-  persistSession(account);
-  loginForm.email = "";
-  loginForm.password = "";
-  accountView.value = "account";
 }
 
-function createAccount() {
-  const accounts = storedAccounts();
+async function createAccount() {
   const email = registerForm.email.trim().toLowerCase();
-  if (accounts.some((account) => account.email.toLowerCase() === email)) {
-    authError.value = "An account with this email address already exists.";
+  authError.value = "";
+  authMessage.value = "";
+  if (registerForm.password.length < 8) {
+    authError.value = "Use at least 8 characters for your password.";
     return;
   }
-  const account = {
-    firstName: registerForm.firstName.trim(),
-    lastName: registerForm.lastName.trim(),
-    email,
-    password: registerForm.password,
-  };
-  accounts.push(account);
-  localStorage.setItem("caracole-accounts", JSON.stringify(accounts));
-  persistSession(account);
-  Object.assign(registerForm, {
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-  });
-  accountView.value = "account";
+  if (registerForm.password !== registerForm.confirmPassword) {
+    authError.value = "Passwords must match exactly.";
+    return;
+  }
+  isSubmittingCustomerAuth.value = true;
+  try {
+    const response = await customerAuthRequest("/register", {
+      firstName: registerForm.firstName.trim(),
+      lastName: registerForm.lastName.trim(),
+      email,
+      password: registerForm.password,
+      confirmPassword: registerForm.confirmPassword,
+    });
+    setPendingVerification(email);
+    Object.assign(registerForm, { firstName: "", lastName: "", email: "", password: "", confirmPassword: "" });
+    authMessage.value = response.message;
+    accountView.value = "verify";
+  } catch (error) {
+    authError.value = error.message;
+  } finally {
+    isSubmittingCustomerAuth.value = false;
+  }
+}
+
+async function verifyCustomerEmail() {
+  authError.value = "";
+  authMessage.value = "";
+  isSubmittingCustomerAuth.value = true;
+  try {
+    const response = await customerAuthRequest("/verify-email", { email: verificationForm.email, otp: verificationForm.otp.trim() });
+    const verifiedEmail = verificationForm.email;
+    clearPendingVerification();
+    loginForm.email = verifiedEmail;
+    loginForm.password = "";
+    authMessage.value = response.message;
+    accountView.value = "login";
+  } catch (error) {
+    authError.value = error.message;
+  } finally {
+    isSubmittingCustomerAuth.value = false;
+  }
+}
+
+async function resendCustomerVerification() {
+  authError.value = "";
+  authMessage.value = "";
+  isSubmittingCustomerAuth.value = true;
+  try {
+    const response = await customerAuthRequest("/resend-verification", { email: verificationForm.email });
+    authMessage.value = response.message;
+  } catch (error) {
+    authError.value = error.message;
+  } finally {
+    isSubmittingCustomerAuth.value = false;
+  }
 }
 
 function signOut() {
+  let tokens = null;
+  try { tokens = JSON.parse(sessionStorage.getItem(CUSTOMER_AUTH_STORAGE_KEY) || "null"); } catch { /* Stored customer tokens are optional. */ }
+  if (tokens?.refreshToken) void customerAuthRequest("/logout", { refreshToken: tokens.refreshToken }).catch(() => {});
   localStorage.removeItem("caracole-session");
+  sessionStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
   currentUser.value = null;
   syncCart(getCart());
   closeAccount();
@@ -1225,13 +1288,18 @@ onMounted(() => {
   void loadHeroBanners();
   void loadShopTheLookEnvironments();
   void loadContentDisplays();
-  storedAccounts();
   try {
-    currentUser.value = JSON.parse(
-      localStorage.getItem("caracole-session") || "null",
-    );
+    const customerTokens = JSON.parse(sessionStorage.getItem(CUSTOMER_AUTH_STORAGE_KEY) || "null");
+    const storedCustomer = JSON.parse(localStorage.getItem("caracole-session") || "null");
+    currentUser.value = customerTokens?.accessToken && customerTokens?.refreshToken ? storedCustomer : null;
+    if (!currentUser.value) localStorage.removeItem("caracole-session");
+    localStorage.removeItem("caracole-accounts");
+    const pendingEmail = pendingVerificationEmail();
+    if (pendingEmail) verificationForm.email = pendingEmail;
   } catch {
     localStorage.removeItem("caracole-session");
+    localStorage.removeItem("caracole-accounts");
+    sessionStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
   }
 });
 onBeforeUnmount(() => {
@@ -1810,7 +1878,8 @@ onBeforeUnmount(() => {
             required
         /></label>
         <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
-        <button class="auth-primary" type="submit">Sign in</button>
+        <p v-if="authMessage" class="auth-message" role="status">{{ authMessage }}</p>
+        <button class="auth-primary" type="submit" :disabled="isSubmittingCustomerAuth">{{ isSubmittingCustomerAuth ? 'Signing in…' : 'Sign in' }}</button>
       </form>
       <div class="auth-alternate">
         <span>New to Caracole?</span
@@ -1869,20 +1938,63 @@ onBeforeUnmount(() => {
             required
         /></label>
         <label
-          ><span>Password</span
-          ><input
-            v-model="registerForm.password"
-            type="password"
-            autocomplete="new-password"
-            minlength="5"
-            required
-        /></label>
+          ><span>Password</span>
+          <span class="auth-password-input">
+            <input
+              v-model="registerForm.password"
+              :type="showRegisterPassword ? 'text' : 'password'"
+              autocomplete="new-password"
+              minlength="8"
+              required
+            />
+            <button class="auth-password-toggle" type="button" :aria-label="showRegisterPassword ? 'Hide password' : 'Show password'" @click="showRegisterPassword = !showRegisterPassword">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.6"/><path v-if="showRegisterPassword" d="m4 4 16 16"/></svg>
+            </button>
+          </span>
+        </label>
+        <label
+          ><span>Confirm password</span>
+          <span class="auth-password-input">
+            <input
+              v-model="registerForm.confirmPassword"
+              :type="showRegisterConfirmPassword ? 'text' : 'password'"
+              autocomplete="new-password"
+              minlength="8"
+              required
+            />
+            <button class="auth-password-toggle" type="button" :aria-label="showRegisterConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'" @click="showRegisterConfirmPassword = !showRegisterConfirmPassword">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.6"/><path v-if="showRegisterConfirmPassword" d="m4 4 16 16"/></svg>
+            </button>
+          </span>
+        </label>
         <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
-        <button class="auth-primary" type="submit">Create account</button>
+        <button class="auth-primary" type="submit" :disabled="isSubmittingCustomerAuth">{{ isSubmittingCustomerAuth ? 'Creating account…' : 'Create account' }}</button>
       </form>
       <div class="auth-alternate">
         <span>Already have an account?</span
         ><button type="button" @click="showLogin">Sign in</button>
+      </div>
+    </section>
+
+    <section
+      v-if="accountView === 'verify'"
+      class="auth-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="verify-email-title"
+    >
+      <button class="auth-close" type="button" aria-label="Close email verification" @click="closeAccount">×</button>
+      <p class="eyebrow">My Caracole</p>
+      <h2 id="verify-email-title">Verify your<br />email address.</h2>
+      <p>Enter the six-digit code we sent to <strong>{{ verificationForm.email }}</strong> to activate your Caracole account.</p>
+      <form @submit.prevent="verifyCustomerEmail">
+        <label><span>Verification code</span><input v-model="verificationForm.otp" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required /></label>
+        <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
+        <p v-if="authMessage" class="auth-message" role="status">{{ authMessage }}</p>
+        <button class="auth-primary" type="submit" :disabled="isSubmittingCustomerAuth">{{ isSubmittingCustomerAuth ? 'Verifying…' : 'Verify email' }}</button>
+      </form>
+      <div class="auth-alternate">
+        <span>Did not receive a code?</span><button type="button" :disabled="isSubmittingCustomerAuth" @click="resendCustomerVerification">Resend code</button>
       </div>
     </section>
 
