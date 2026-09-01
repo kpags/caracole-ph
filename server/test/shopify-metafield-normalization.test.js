@@ -10,6 +10,7 @@ test('keeps scalar Finish and Size values unchanged', () => {
 test('converts Finish and Size list values into readable strings', () => {
   assert.equal(normalizeDisplayMetafieldValue('custom.finish', '["Dry Martini", "Cloud", " ", "Charcoal Leaf & Brushed Gold"]'), 'Dry Martini, Cloud, Charcoal Leaf & Brushed Gold')
   assert.equal(normalizeDisplayMetafieldValue('custom.size', '["170.752W x 68D x 75H CM"]'), '170.752W x 68D x 75H CM')
+  assert.equal(normalizeDisplayMetafieldValue('custom.material', '["Metal Accents", "Stone / Marble"]'), 'Metal Accents, Stone / Marble')
 })
 
 test('safely preserves malformed values and leaves unrelated metafields alone', () => {

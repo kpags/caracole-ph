@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { getProductPath, productKey, useCatalog } from '../data/catalog.js'
-import { getProductFacets, productTimestamp } from '../data/product-facets.js'
 import { getWishlist, toggleWishlist, WISHLIST_EVENT } from '../data/wishlist.js'
 import ProductImageCarousel from './ProductImageCarousel.vue'
 import Paginator from 'primevue/paginator'
@@ -22,21 +21,44 @@ const categoryStories = {
 
 const drawerOpen = ref(false)
 const sort = ref('latest')
-const selected = reactive({ sizes: [], finishes: [], materials: [], colors: [], fabrics: [], origins: [] })
+const selectedAttributes = reactive({})
+const dimensions = reactive({
+  diameter: { min: '', max: '' },
+  width: { min: '', max: '' },
+  depth: { min: '', max: '' },
+  height: { min: '', max: '' },
+})
 const priceMin = ref('')
 const priceMax = ref('')
 const newArrivalsOnly = ref(false)
 const inStockOnly = ref(false)
 const notificationSet = ref(new Set())
 const wishlistSet = ref(new Set())
-const { products, pagination, status, error, load } = useCatalog()
+const { products, pagination, filterGroups, status, error, load, loadFilterOptions } = useCatalog()
 const page = ref(1)
 const limit = ref(24)
 const first = computed(() => (page.value - 1) * limit.value)
 
+function filterParams() {
+  const attribute = Object.entries(selectedAttributes)
+    .flatMap(([key, values]) => values.map((value) => `${key}:${value}`))
+  const dimensionParams = Object.fromEntries(Object.entries(dimensions).flatMap(([key, range]) => {
+    const label = key[0].toUpperCase() + key.slice(1)
+    return [[`min${label}`, range.min], [`max${label}`, range.max]]
+  }))
+  return {
+    attribute,
+    ...dimensionParams,
+    minPrice: priceMin.value,
+    maxPrice: priceMax.value,
+    inStock: inStockOnly.value ? 'true' : undefined,
+    sort: sort.value,
+  }
+}
+
 function loadPage(nextPage = page.value, { force = false } = {}) {
   page.value = nextPage
-  return load({ force, page: nextPage, limit: limit.value, ...(props.newArrivalsPage ? {} : { category: props.category }), ...(props.subcategory ? { subcategory: props.subcategory } : {}) }).catch(() => {})
+  return load({ force, page: nextPage, limit: limit.value, ...(props.newArrivalsPage ? {} : { category: props.category }), ...(props.subcategory ? { subcategory: props.subcategory } : {}), ...filterParams() }).catch(() => {})
 }
 
 function handlePageChange(event) {
@@ -45,64 +67,30 @@ function handlePageChange(event) {
   loadPage(rowsChanged ? 1 : event.page + 1)
 }
 
-const baseProducts = computed(() => products.value
-  .filter((product) => props.newArrivalsPage ? product.isNewArrival : product.displayCategory === props.category)
-  .filter((product) => props.newArrivalsPage || !props.subcategory || product.subcategory === props.subcategory)
-  .map((product) => ({ ...product, facets: getProductFacets(product) })))
-
-function uniqueFacet(key) {
-  return computed(() => [...new Set(baseProducts.value.flatMap((product) => product.facets[key]))].sort((a, b) => a.localeCompare(b)))
-}
-
-const sizeOptions = computed(() => ['Small', 'Medium', 'Large', 'Oversized', 'Unspecified'].filter((size) => baseProducts.value.some((product) => product.facets.size === size)))
-const finishOptions = uniqueFacet('finishes')
-const materialOptions = uniqueFacet('materials')
-const colorOptions = uniqueFacet('colors')
-const fabricOptions = uniqueFacet('fabrics')
-const originOptions = computed(() => [...new Set(baseProducts.value.map((product) => product.origin || 'Not specified'))].sort((a, b) => a.localeCompare(b)))
-
-function includesSelected(values, choices) {
-  return !choices.length || choices.some((choice) => values.includes(choice))
-}
-
-const filteredProducts = computed(() => {
-  const min = priceMin.value === '' ? -Infinity : Number(priceMin.value)
-  const max = priceMax.value === '' ? Infinity : Number(priceMax.value)
-  const items = baseProducts.value.filter((product) => {
-    if (selected.sizes.length && !selected.sizes.includes(product.facets.size)) return false
-    if (!includesSelected(product.facets.finishes, selected.finishes)) return false
-    if (!includesSelected(product.facets.materials, selected.materials)) return false
-    if (!includesSelected(product.facets.colors, selected.colors)) return false
-    if (!includesSelected(product.facets.fabrics, selected.fabrics)) return false
-    if (selected.origins.length && !selected.origins.includes(product.origin || 'Not specified')) return false
-    if (newArrivalsOnly.value && !product.isNewArrival) return false
-    if (inStockOnly.value && Number(product.stockQuantity) <= 0) return false
-    const price = Number(product.priceValue) || 0
-    return price >= min && price <= max
-  })
-
-  return [...items].sort((a, b) => {
-    if (sort.value === 'name-asc') return a.name.localeCompare(b.name)
-    if (sort.value === 'name-desc') return b.name.localeCompare(a.name)
-    if (sort.value === 'oldest') return productTimestamp(a) - productTimestamp(b)
-    return productTimestamp(b) - productTimestamp(a)
-  })
-})
-
-const activeFilterCount = computed(() => Object.values(selected).reduce((total, values) => total + values.length, 0) + (priceMin.value !== '' ? 1 : 0) + (priceMax.value !== '' ? 1 : 0) + (newArrivalsOnly.value ? 1 : 0) + (inStockOnly.value ? 1 : 0))
+const activeFilterCount = computed(() => Object.values(selectedAttributes).reduce((total, values) => total + values.length, 0)
+  + Object.values(dimensions).reduce((total, range) => total + (range.min !== '' ? 1 : 0) + (range.max !== '' ? 1 : 0), 0)
+  + (priceMin.value !== '' ? 1 : 0) + (priceMax.value !== '' ? 1 : 0) + (newArrivalsOnly.value ? 1 : 0) + (inStockOnly.value ? 1 : 0))
+const dimensionFilterCount = computed(() => Object.values(dimensions).reduce((total, range) => total + (range.min !== '' ? 1 : 0) + (range.max !== '' ? 1 : 0), 0))
+const availabilityFilterCount = computed(() => Number(newArrivalsOnly.value) + Number(inStockOnly.value))
+const priceFilterCount = computed(() => Number(priceMin.value !== '') + Number(priceMax.value !== ''))
 const story = computed(() => categoryStories[props.category] ?? categoryStories.Living)
 const pageTitle = computed(() => props.newArrivalsPage ? 'New Arrivals' : (props.subcategory || props.category))
 const collectionLabel = computed(() => props.newArrivalsPage ? 'new arrivals' : props.category.toLowerCase())
 
+function attributeFilterCount(groupKey) {
+  return (selectedAttributes[groupKey] || []).length
+}
+
 function toggleSelection(group, value) {
-  const values = selected[group]
+  const values = selectedAttributes[group] || (selectedAttributes[group] = [])
   const index = values.indexOf(value)
   if (index === -1) values.push(value)
   else values.splice(index, 1)
 }
 
 function clearFilters() {
-  Object.values(selected).forEach((values) => values.splice(0))
+  Object.keys(selectedAttributes).forEach((key) => delete selectedAttributes[key])
+  Object.values(dimensions).forEach((range) => { range.min = ''; range.max = '' })
   priceMin.value = ''
   priceMax.value = ''
   newArrivalsOnly.value = false
@@ -143,13 +131,19 @@ function handleKey(event) {
 }
 
 onMounted(() => {
+  loadFilterOptions({ ...(props.newArrivalsPage ? {} : { category: props.category }), ...(props.subcategory ? { subcategory: props.subcategory } : {}) }).catch(() => {})
   loadPage()
   window.addEventListener('keydown', handleKey)
   window.addEventListener(WISHLIST_EVENT, refreshWishlist)
   refreshWishlist()
   try { notificationSet.value = new Set(JSON.parse(localStorage.getItem('caracole-stock-notifications') || '[]')) } catch { notificationSet.value = new Set() }
 })
-watch(() => [props.category, props.subcategory, props.newArrivalsPage], () => loadPage(1))
+watch(() => [props.category, props.subcategory, props.newArrivalsPage], () => {
+  clearFilters()
+  loadFilterOptions({ ...(props.newArrivalsPage ? {} : { category: props.category }), ...(props.subcategory ? { subcategory: props.subcategory } : {}) }).catch(() => {})
+  loadPage(1)
+})
+watch([selectedAttributes, dimensions, priceMin, priceMax, inStockOnly, sort], () => loadPage(1), { deep: true })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKey)
   window.removeEventListener(WISHLIST_EVENT, refreshWishlist)
@@ -162,7 +156,6 @@ onBeforeUnmount(() => {
       <img :src="story.image" :alt="`${category} collection interior`" />
       <div class="catalog-hero__shade"></div>
       <div class="catalog-hero__content">
-        <p class="eyebrow light">The Collection</p>
         <p class="catalog-breadcrumb"><a href="/">Home</a><span>/</span>{{ category }}<template v-if="subcategory"><span>/</span>{{ subcategory }}</template></p>
         <h1>{{ subcategory || category }}</h1>
         <p>{{ story.copy }}</p>
@@ -183,8 +176,8 @@ onBeforeUnmount(() => {
 
       <div v-if="status === 'loading'" class="catalog-empty"><p class="eyebrow">Loading collection</p><h2>Gathering the pieces.</h2></div>
       <div v-else-if="status === 'error'" class="catalog-empty"><p class="eyebrow">Catalog unavailable</p><h2>We couldn’t load the collection.</h2><p>{{ error }}</p><button type="button" @click="loadPage(page, { force: true })">Try again</button></div>
-      <div v-else-if="filteredProducts.length" class="catalog-grid" role="list">
-        <article v-for="product in filteredProducts" :key="productKey(product)" class="catalog-card" role="listitem">
+      <div v-else-if="products.length" class="catalog-grid" role="list">
+        <article v-for="product in products" :key="productKey(product)" class="catalog-card" role="listitem">
           <div class="catalog-card__image">
             <a class="catalog-card__image-link" :href="getProductPath(product)"><ProductImageCarousel :product="product" /></a>
             <div class="catalog-card__badges"><span v-if="product.isNewArrival">New</span><span v-if="Number(product.stockQuantity) <= 0" class="out-of-stock">Out of Stock</span></div>
@@ -208,7 +201,7 @@ onBeforeUnmount(() => {
         :disabled="status === 'loading'"
         @page="handlePageChange"
       />
-      <div v-else-if="!filteredProducts.length" class="catalog-empty">
+      <div v-else-if="!products.length" class="catalog-empty">
         <p class="eyebrow">No matching pieces</p>
         <h2>Let’s widen the view.</h2>
         <p>Clear your selected filters to see more of the {{ collectionLabel }} collection.</p>
@@ -224,28 +217,31 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="filter-drawer__body">
-        <details v-for="group in [{ key: 'sizes', label: 'Size', options: sizeOptions }, { key: 'finishes', label: 'Finish', options: finishOptions }, { key: 'materials', label: 'Material', options: materialOptions }, { key: 'colors', label: 'Color', options: colorOptions }, { key: 'fabrics', label: 'Fabric Type', options: fabricOptions }]" :key="group.key">
-          <summary>{{ group.label }} <span>+</span></summary>
+        <details>
+          <summary><span class="filter-summary__label">Dimensions <b v-if="dimensionFilterCount">{{ dimensionFilterCount }}</b></span><span class="filter-summary__toggle">+</span></summary>
+          <div class="dimension-fields">
+            <p>All measurements are in centimeters (CM).</p>
+            <label v-for="(range, key) in dimensions" :key="key"><span>{{ key[0].toUpperCase() + key.slice(1) }}</span><div><input v-model="range.min" type="number" min="0" step="0.01" placeholder="Min" :aria-label="`Minimum ${key} in centimeters`" /><input v-model="range.max" type="number" min="0" step="0.01" placeholder="Max" :aria-label="`Maximum ${key} in centimeters`" /></div></label>
+          </div>
+        </details>
+
+        <details v-for="group in filterGroups" :key="group.key">
+          <summary><span class="filter-summary__label">{{ group.name }} <b v-if="attributeFilterCount(group.key)">{{ attributeFilterCount(group.key) }}</b></span><span class="filter-summary__toggle">+</span></summary>
           <div class="filter-options">
             <label v-for="option in group.options" :key="option">
-              <input type="checkbox" :checked="selected[group.key].includes(option)" @change="toggleSelection(group.key, option)" /><span>{{ option }}</span>
+              <input type="checkbox" :checked="(selectedAttributes[group.key] || []).includes(option)" @change="toggleSelection(group.key, option)" /><span>{{ option }}</span>
             </label>
             <p v-if="!group.options.length">No options available for this collection.</p>
           </div>
         </details>
 
         <details>
-          <summary>Origin <span>+</span></summary>
-          <div class="filter-options"><label v-for="option in originOptions" :key="option"><input type="checkbox" :checked="selected.origins.includes(option)" @change="toggleSelection('origins', option)" /><span>{{ option }}</span></label></div>
-        </details>
-
-        <details>
-          <summary>Availability <span>+</span></summary>
+          <summary><span class="filter-summary__label">Availability <b v-if="availabilityFilterCount">{{ availabilityFilterCount }}</b></span><span class="filter-summary__toggle">+</span></summary>
           <div class="filter-options"><label v-if="!newArrivalsPage"><input v-model="newArrivalsOnly" type="checkbox" /><span>New Arrivals</span></label><label><input v-model="inStockOnly" type="checkbox" /><span>In Stock</span></label></div>
         </details>
 
         <details>
-          <summary>Price <span>+</span></summary>
+          <summary><span class="filter-summary__label">Price <b v-if="priceFilterCount">{{ priceFilterCount }}</b></span><span class="filter-summary__toggle">+</span></summary>
           <div class="price-fields">
             <label><span>Minimum (₱)</span><input v-model="priceMin" type="number" min="0" placeholder="0" /></label>
             <label><span>Maximum (₱)</span><input v-model="priceMax" type="number" min="0" placeholder="No limit" /></label>
@@ -253,7 +249,7 @@ onBeforeUnmount(() => {
         </details>
 
         <details open>
-          <summary>Sort by <span>+</span></summary>
+          <summary><span class="filter-summary__label">Sort by</span><span class="filter-summary__toggle">+</span></summary>
           <div class="filter-options filter-options--sort">
             <label v-for="option in [{ value: 'name-asc', label: 'Name: A–Z' }, { value: 'name-desc', label: 'Name: Z–A' }, { value: 'latest', label: 'Latest' }, { value: 'oldest', label: 'Oldest' }]" :key="option.value">
               <input v-model="sort" type="radio" name="sort" :value="option.value" /><span>{{ option.label }}</span>
@@ -264,7 +260,7 @@ onBeforeUnmount(() => {
 
       <div class="filter-drawer__foot">
         <button type="button" class="filter-clear" @click="clearFilters">Clear all</button>
-        <button type="button" class="filter-view" @click="drawerOpen = false">View {{ filteredProducts.length }} products</button>
+        <button type="button" class="filter-view" @click="drawerOpen = false">View {{ pagination.totalItems }} products</button>
       </div>
     </aside>
   </main>

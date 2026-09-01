@@ -71,7 +71,9 @@ export function serializeAdminProduct(product) {
     currencyCode: product.currencyCode || 'PHP',
     image: imageFor(product),
     description: product.description || '',
-    attributes: (product.attributeValues || []).map(({ attribute, value }) => ({ key: attribute.key, name: attribute.name, value })),
+    attributes: (product.attributeValues || [])
+      .filter(({ attribute }) => attribute.key !== 'size')
+      .map(({ attribute, value }) => ({ key: attribute.key, name: attribute.name, value })),
     updatedAt: product.updatedAt
   }
 }

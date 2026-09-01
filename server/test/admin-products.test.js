@@ -21,7 +21,6 @@ test('serializes local product data for the admin catalog', () => {
   assert.equal(result.image, 'https://example.com/chair.jpg')
   assert.deepEqual(result.attributes, [
     { key: 'finish', name: 'Finish', value: 'Dry Martini, Cloud' },
-    { key: 'size', name: 'Size', value: '170.752W x 68D x 75H CM' }
   ])
 })
 

@@ -4,6 +4,7 @@ import filters from './catalog-filters.json'
 const products = ref([])
 const pagination = ref({ page: 1, limit: 24, totalItems: 0, totalPages: 0 })
 const productByHandle = ref(null)
+const filterGroups = ref([])
 const status = ref('idle')
 const error = ref('')
 let pendingRequest = null
@@ -44,7 +45,14 @@ export async function loadCatalog({ force = false, ...params } = {}) {
   if (pendingRequest && !force) return pendingRequest
   status.value = 'loading'
   error.value = ''
-  const searchParams = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '').map(([key, value]) => [key, String(value)]))
+  const searchParams = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const item of value) if (item !== undefined && item !== null && item !== '') searchParams.append(key, String(item))
+    } else if (value !== undefined && value !== null && value !== '') {
+      searchParams.set(key, String(value))
+    }
+  }
   pendingRequest = fetch(`${apiBaseUrl}/api/v1/products${searchParams.size ? `?${searchParams}` : ''}`)
     .then(async (response) => {
       const payload = await response.json().catch(() => ({}))
@@ -64,6 +72,17 @@ export async function loadCatalog({ force = false, ...params } = {}) {
   return pendingRequest
 }
 
+export async function loadCatalogFilterOptions({ category, subcategory } = {}) {
+  const searchParams = new URLSearchParams()
+  if (category) searchParams.set('category', category)
+  if (subcategory) searchParams.set('subcategory', subcategory)
+  const response = await fetch(`${apiBaseUrl}/api/v1/products/filter-options${searchParams.size ? `?${searchParams}` : ''}`)
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.message || payload.error?.message || 'Product filters are unavailable.')
+  filterGroups.value = Array.isArray(payload.groups) ? payload.groups : []
+  return filterGroups.value
+}
+
 export async function loadProductByHandle(handle) {
   const response = await fetch(`${apiBaseUrl}/api/v1/products/${encodeURIComponent(handle)}`)
   const payload = await response.json().catch(() => ({}))
@@ -73,5 +92,5 @@ export async function loadProductByHandle(handle) {
 }
 
 export function useCatalog() {
-  return { products: catalogProducts, pagination: catalogPagination, status: catalogStatus, error: catalogError, load: loadCatalog, ready: computed(() => status.value === 'ready') }
+  return { products: catalogProducts, pagination: catalogPagination, filterGroups: readonly(filterGroups), status: catalogStatus, error: catalogError, load: loadCatalog, loadFilterOptions: loadCatalogFilterOptions, ready: computed(() => status.value === 'ready') }
 }

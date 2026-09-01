@@ -125,7 +125,9 @@ const detailRows = computed(() => [
   ['EDP number', props.product.edpNumber],
   ['Category', props.product.displayCategory],
   ['Subcategory', props.product.subcategory],
-  ...(props.product.attributes || []).map((attribute) => [attribute.name, attribute.value]),
+  ...(props.product.attributes || [])
+    .filter((attribute) => attribute.key !== 'size')
+    .map((attribute) => [attribute.name, attribute.value]),
 ].filter(([, value]) => value && value !== '--'))
 
 function addDays(days) {

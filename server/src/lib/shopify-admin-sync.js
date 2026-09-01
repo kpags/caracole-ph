@@ -85,19 +85,19 @@ function productData(product) {
 }
 
 async function syncProductAttributeValues(prisma, productId, attributeRecords, values) {
-  const valueByKey = new Map(values.map((value) => [value.key, value.value]))
+  const valueByKey = new Map(values.map((value) => [value.key, value]))
   const removedAttributeIds = [...attributeRecords.values()]
     .filter((attribute) => !valueByKey.has(attribute.key))
     .map((attribute) => attribute.id)
   if (removedAttributeIds.length) {
     await prisma.productAttributeValue.deleteMany({ where: { productId, attributeId: { in: removedAttributeIds } } })
   }
-  await Promise.all([...valueByKey].map(([key, value]) => {
+  await Promise.all([...valueByKey].map(([key, record]) => {
     const attribute = attributeRecords.get(key)
     return prisma.productAttributeValue.upsert({
       where: { productId_attributeId: { productId, attributeId: attribute.id } },
-      create: { productId, attributeId: attribute.id, value },
-      update: { value }
+      create: { productId, attributeId: attribute.id, value: record.value, numericValue: record.numericValue },
+      update: { value: record.value, numericValue: record.numericValue }
     })
   }))
 }
