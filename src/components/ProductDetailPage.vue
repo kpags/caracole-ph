@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { addCartItem } from '../data/cart.js'
 import { getProductPath, productKey, useCatalog } from '../data/catalog.js'
 import { getWishlist, toggleWishlist, WISHLIST_EVENT } from '../data/wishlist.js'
@@ -25,25 +25,7 @@ const inquiryClose = ref(null)
 const inquiryForm = reactive({ firstName: '', lastName: '', email: '', contactNumber: '', inquiry: '', captchaConfirmed: false })
 const cartToast = ref('')
 let cartToastTimer
-const { products } = useCatalog()
-
-const recommendationMap = {
-  'Sofas & Loveseats': ['Sectionals', 'Side & End Tables', 'Center & Cocktail Tables', 'Cocktail Tables', 'Chairs', 'Benches & Ottomans'],
-  Sectionals: ['Side & End Tables', 'Center & Cocktail Tables', 'Cocktail Tables', 'Chairs', 'Benches & Ottomans'],
-  Beds: ['Nightstands', 'Chest Of Drawers', 'Dressers', 'Bed End Benches & Ottomans'],
-  Nightstands: ['Beds', 'Dressers', 'Chest Of Drawers', 'Bed End Benches & Ottomans'],
-  'Dining Chairs': ['Dining Tables', 'Dining Side Chairs', 'Dining Armchairs', 'Sideboards & Buffets'],
-  'Dining Armchairs': ['Dining Tables', 'Dining Side Chairs', 'Dining Chairs', 'Sideboards & Buffets'],
-  'Dining Side Chairs': ['Dining Tables', 'Dining Armchairs', 'Dining Chairs', 'Sideboards & Buffets'],
-  'Dining Tables': ['Dining Chairs', 'Dining Side Chairs', 'Dining Armchairs', 'Sideboards & Buffets'],
-  Chairs: ['Side & End Tables', 'Center & Cocktail Tables', 'Cocktail Tables', 'Sofas & Loveseats', 'Benches & Ottomans'],
-  'Side & End Tables': ['Sofas & Loveseats', 'Chairs', 'Center & Cocktail Tables', 'Cocktail Tables'],
-  'Center & Cocktail Tables': ['Sofas & Loveseats', 'Chairs', 'Side & End Tables', 'Benches & Ottomans'],
-  'Cocktail Tables': ['Sofas & Loveseats', 'Chairs', 'Side & End Tables', 'Benches & Ottomans'],
-  'Consoles & Desks': ['Chairs', 'Side & End Tables', 'Etageres & Shelves'],
-  Dressers: ['Beds', 'Nightstands', 'Chest Of Drawers', 'Bed End Benches & Ottomans'],
-  'Chest Of Drawers': ['Beds', 'Nightstands', 'Dressers', 'Bed End Benches & Ottomans'],
-}
+const { products, load } = useCatalog()
 
 const images = computed(() => [...new Set([props.product.image, ...(props.product.images ?? [])].filter(Boolean))])
 const description = computed(() => props.product.description && props.product.description !== '--' ? props.product.description : '')
@@ -77,47 +59,33 @@ const reviewPageCount = computed(() => Math.ceil(productReviews.value.length / 1
 const paginatedReviews = computed(() => productReviews.value.slice((reviewPage.value - 1) * 10, reviewPage.value * 10))
 const reviewAverage = computed(() => (productReviews.value.reduce((sum, review) => sum + review.rating, 0) / productReviews.value.length).toFixed(1))
 
+function mainCategory(product) {
+  return product?.displayCategory || product?.primaryCategory || product?.categories?.[0] || ''
+}
+
 const recommendations = computed(() => {
-  const desired = recommendationMap[props.product.subcategory] ?? []
-  const groups = desired.map((subcategory) => products.value.filter((candidate) =>
-    productKey(candidate) !== productKey(props.product)
-    && candidate.displayCategory === props.product.displayCategory
-    && candidate.subcategory === subcategory
-    && candidate.image
-  ))
-  const selected = []
-  let round = 0
-
-  while (selected.length < 5 && groups.some((group) => group[round])) {
-    groups.forEach((group) => {
-      if (selected.length < 5 && group[round]) selected.push(group[round])
+  const category = mainCategory(props.product)
+  const currentProductKey = productKey(props.product)
+  return products.value
+    .filter((candidate) => productKey(candidate) !== currentProductKey && mainCategory(candidate) === category && candidate.image)
+    .sort((left, right) => {
+      const leftMatchesSubcategory = left.subcategory === props.product.subcategory
+      const rightMatchesSubcategory = right.subcategory === props.product.subcategory
+      if (leftMatchesSubcategory !== rightMatchesSubcategory) return Number(leftMatchesSubcategory) - Number(rightMatchesSubcategory)
+      return String(left.name).localeCompare(String(right.name))
     })
-    round += 1
-  }
-
-  if (selected.length < 5) {
-    const fallback = products.value.filter((candidate) =>
-      productKey(candidate) !== productKey(props.product)
-      && candidate.displayCategory === props.product.displayCategory
-      && candidate.subcategory !== '--'
-      && candidate.image
-      && !selected.some((item) => productKey(item) === productKey(candidate))
-    )
-    selected.push(...fallback.slice(0, 5 - selected.length))
-  }
-
-  if (selected.length < 5) {
-    const collectionFallback = products.value.filter((candidate) =>
-      productKey(candidate) !== productKey(props.product)
-      && candidate.subcategory !== '--'
-      && candidate.image
-      && !selected.some((item) => productKey(item) === productKey(candidate))
-    )
-    selected.push(...collectionFallback.slice(0, 5 - selected.length))
-  }
-
-  return selected.slice(0, 5)
+    .slice(0, 5)
 })
+
+const frequentlyBoughtTogether = computed(() => recommendations.value.slice(0, 5))
+
+function loadCategoryRecommendations() {
+  const category = mainCategory(props.product)
+  if (!category) return
+  void load({ category, page: 1, limit: 100 }).catch(() => {})
+}
+
+watch(() => props.product.handle, loadCategoryRecommendations)
 
 const detailRows = computed(() => [
   ['Series', props.product.series],
@@ -257,6 +225,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleEscape)
   window.addEventListener(WISHLIST_EVENT, refreshWishlist)
   refreshWishlist()
+  loadCategoryRecommendations()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
@@ -360,10 +329,10 @@ onBeforeUnmount(() => {
       <button v-if="productReviews.length > 4" class="product-reviews__more" type="button" @click="openReviews">See more reviews <span>{{ productReviews.length }}</span></button>
     </section>
 
-    <section v-if="recommendations.length" class="related-products" aria-labelledby="related-products-title">
+    <section v-if="frequentlyBoughtTogether.length" class="related-products" aria-labelledby="related-products-title">
       <header><div><p class="eyebrow">Complete the room</p><h2 id="related-products-title">Frequently Bought Together</h2></div><p>Pieces selected to live beautifully alongside {{ product.name }}.</p></header>
       <div class="related-products__grid">
-        <article v-for="item in recommendations" :key="productKey(item)" class="related-product-card">
+        <article v-for="item in frequentlyBoughtTogether" :key="productKey(item)" class="related-product-card">
           <a class="related-product-card__image" :href="getProductPath(item)"><img :src="item.image" :alt="item.name" loading="lazy" /><i>View product →</i></a>
           <span class="related-product-card__copy"><small>{{ item.subcategory }}</small><a :href="getProductPath(item)"><b>{{ item.name }}</b></a><strong>{{ formatRecommendationPrice(item) }}</strong></span>
           <button class="wishlist-heart related-product-card__wishlist" type="button" :class="{ active: wishlistSet.has(productKey(item)) }" :aria-label="wishlistSet.has(productKey(item)) ? `Remove ${item.name} from wishlist` : `Add ${item.name} to wishlist`" @click="updateWishlist(item)"><span aria-hidden="true">{{ wishlistSet.has(productKey(item)) ? '♥' : '♡' }}</span></button>

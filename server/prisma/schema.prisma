@@ -18,6 +18,11 @@ enum DesignerReviewStatus {
   REJECTED
 }
 
+enum CartOwnerType {
+  REGISTERED
+  SESSION
+}
+
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -249,4 +254,25 @@ model CatalogSyncRun {
 
   @@index([startedAt])
   @@map("catalog_sync_runs")
+}
+
+model Cart {
+  id                String        @id @default(uuid()) @db.Uuid
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ownerKey          String        @unique @map("owner_key") @db.VarChar(360)
+  ownerType         CartOwnerType @map("owner_type")
+  sessionId         String        @map("session_id") @db.VarChar(180)
+  customerEmail     String?       @map("customer_email") @db.VarChar(320)
+  customerFirstName String?       @map("customer_first_name") @db.VarChar(100)
+  customerLastName  String?       @map("customer_last_name") @db.VarChar(100)
+  items             Json          @default("[]")
+  itemCount         Int           @default(0) @map("item_count")
+  totalPrice        Decimal       @default(0) @map("total_price") @db.Decimal(14, 2)
+  currencyCode      String        @default("PHP") @map("currency_code") @db.VarChar(3)
+
+  @@index([ownerType, itemCount, createdAt])
+  @@index([ownerType, itemCount, updatedAt])
+  @@index([customerEmail])
+  @@map("carts")
 }

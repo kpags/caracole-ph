@@ -8,6 +8,7 @@ import { usersRoutes } from './routes/users.js'
 import { productsRoutes } from './routes/products.js'
 import { adminProductsRoutes } from './routes/admin-products.js'
 import { contentDisplaysRoutes } from './routes/content-displays.js'
+import { cartsRoutes } from './routes/carts.js'
 import { asyncRoute, errorHandler, HttpError } from './lib/http.js'
 
 export function createApp({ prisma, config, auth, mailer, storage, products }) {
@@ -48,6 +49,7 @@ export function createApp({ prisma, config, auth, mailer, storage, products }) {
   app.use('/api/v1/users', usersRoutes({ prisma, config, mailer, authenticate, authorize }))
   app.use('/api/v1/admin/products', adminProductsRoutes({ prisma, authenticate, authorize }))
   app.use('/api/v1/products', productsRoutes({ prisma }))
+  app.use('/api/v1/carts', cartsRoutes({ prisma, authenticate, authorize }))
   app.use((_req, _res, next) => next(new HttpError(404, 'Route not found')))
   app.use(errorHandler)
   return app

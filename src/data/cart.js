@@ -1,5 +1,8 @@
 const CART_KEY = 'caracole-cart'
+const CART_SESSION_KEY = 'caracole-cart-session-id'
 export const CART_EVENT = 'caracole-cart-updated'
+let cartApiBaseUrl = ''
+let cartSyncTimer = null
 
 function normalizeItem(item) {
   return {
@@ -23,10 +26,46 @@ export function getCart() {
   }
 }
 
+export function configureCartApiBaseUrl(value) {
+  cartApiBaseUrl = String(value || '').replace(/\/$/, '')
+}
+
+function cartSessionId() {
+  const existing = localStorage.getItem(CART_SESSION_KEY)
+  if (existing) return existing
+  const id = globalThis.crypto?.randomUUID?.() || `cart-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  localStorage.setItem(CART_SESSION_KEY, id)
+  return id
+}
+
+function registeredCustomer() {
+  try {
+    const user = JSON.parse(localStorage.getItem('caracole-session') || 'null')
+    if (!user?.email || !user?.firstName || !user?.lastName) return null
+    return { email: String(user.email).trim().toLowerCase(), firstName: String(user.firstName).trim(), lastName: String(user.lastName).trim() }
+  } catch {
+    return null
+  }
+}
+
+export function syncCart(items = getCart()) {
+  if (typeof window === 'undefined' || !cartApiBaseUrl) return
+  const customer = registeredCustomer()
+  window.clearTimeout(cartSyncTimer)
+  cartSyncTimer = window.setTimeout(() => {
+    void fetch(`${cartApiBaseUrl}/api/v1/carts/current`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: cartSessionId(), customer, items })
+    }).catch(() => {})
+  }, 250)
+}
+
 export function saveCart(items) {
   const normalized = items.map(normalizeItem).filter((item) => item.id)
   localStorage.setItem(CART_KEY, JSON.stringify(normalized))
   window.dispatchEvent(new CustomEvent(CART_EVENT, { detail: normalized }))
+  syncCart(normalized)
   return normalized
 }
 

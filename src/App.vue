@@ -42,7 +42,9 @@ import {
   formatCartPrice,
   getCart,
   removeCartItem,
+  configureCartApiBaseUrl,
   setCartQuantity,
+  syncCart,
 } from "./data/cart.js";
 import {
   getWishlist,
@@ -150,6 +152,7 @@ const apiBaseUrl = ((import.meta.server
   "",
 );
 configureCatalogApiBaseUrl(apiBaseUrl);
+configureCartApiBaseUrl(apiBaseUrl);
 
 const seoTitle = computed(() => {
   if (selectedProduct.value?.name) return selectedProduct.value.name;
@@ -914,6 +917,7 @@ function persistSession(account) {
   };
   currentUser.value = session;
   localStorage.setItem("caracole-session", JSON.stringify(session));
+  syncCart(getCart());
 }
 
 function login() {
@@ -960,6 +964,7 @@ function createAccount() {
 function signOut() {
   localStorage.removeItem("caracole-session");
   currentUser.value = null;
+  syncCart(getCart());
   closeAccount();
 }
 
@@ -973,6 +978,7 @@ function openCart() {
   closeDesigner();
   closeSearch();
   refreshCart();
+  syncCart(getCart());
   cartOpen.value = true;
 }
 

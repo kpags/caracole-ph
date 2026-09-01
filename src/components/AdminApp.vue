@@ -41,6 +41,14 @@ const orderedGroups = [
     { key: "Content Designers", label: "Designers" },
   ] },
   { title: "Products", icon: "pi pi-list", items: [] },
+  {
+    title: "Carts",
+    icon: "pi pi-shopping-cart",
+    items: [
+      { key: "Registered Carts", label: "Registered Carts" },
+      { key: "Session Carts", label: "Session Carts" },
+    ],
+  },
   { title: "Appointments", icon: "pi pi-clock", items: [] },
   {
     title: "Inquiries",
@@ -118,6 +126,14 @@ const adminProductsError = ref("");
 const selectedAdminProduct = ref(null);
 const isAdminProductDetailsOpen = ref(false);
 const adminProductDialog = ref(null);
+const adminCarts = ref([]);
+const adminCartFilters = ref({ search: "", dateFrom: "", dateTo: "" });
+const adminCartPagination = ref({ page: 1, limit: 10, totalItems: 0, totalPages: 0 });
+const isLoadingAdminCarts = ref(false);
+const adminCartsError = ref("");
+const selectedAdminCart = ref(null);
+const isAdminCartDetailsOpen = ref(false);
+const adminCartDialog = ref(null);
 const adminUsers = ref([]);
 const adminUserSearch = ref("");
 const adminUserRole = ref("");
@@ -148,6 +164,7 @@ const isCompletingInvite = ref(false);
 let shopTheLookQuill = null;
 let shopTheLookToastTimer = null;
 let adminProductSearchTimer = null;
+let adminCartSearchTimer = null;
 let adminUserSearchTimer = null;
 
 const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((position) => ({
@@ -156,7 +173,7 @@ const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((posi
 })));
 const shopTheLookPreview = computed(() => shopTheLookPreviewUrl.value || shopTheLookExistingImageUrl.value);
 const shopTheLookDescriptionLength = computed(() => getShopTheLookDescriptionText(shopTheLookDescription.value).length);
-const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value || isAdminProductDetailsOpen.value || isDesignerDetailsOpen.value || isDesignerReviewOpen.value || isInviteUserOpen.value);
+const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value || isAdminProductDetailsOpen.value || isAdminCartDetailsOpen.value || isDesignerDetailsOpen.value || isDesignerReviewOpen.value || isInviteUserOpen.value);
 const assignedProduct = (hotspot) => shopTheLookProductCache.value[hotspot.productId]
   || shopTheLookProducts.value.find((product) => (product.recordId || product.id) === hotspot.productId)
   || null;
@@ -193,7 +210,7 @@ const activeGroup = computed(() =>
   ),
 );
 const adminTopbarTitle = computed(() => {
-  if (activeGroup.value?.title === "Users") return itemLabel(activeGroup.value.items.find((item) => itemKey(item) === active.value) || active.value);
+  if (["Users", "Carts"].includes(activeGroup.value?.title)) return itemLabel(activeGroup.value.items.find((item) => itemKey(item) === active.value) || active.value);
   return activeGroup.value?.items.length ? activeGroup.value.title : active.value;
 });
 const currentAdminEmail = computed(() => {
@@ -212,10 +229,10 @@ const currentAdminIsSuperuser = computed(() => {
 });
 
 function getStoredAdminView() {
-  const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Users: false, Inquiries: false } };
+  const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Carts: false, Users: false, Inquiries: false } };
   try {
     const value = JSON.parse(sessionStorage.getItem(ADMIN_VIEW_STORAGE_KEY) || "null");
-    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Products", "Appointments", "General", "Product", "Newsletter", "Admin", "Registered Designers", "Customers"];
+    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Products", "Registered Carts", "Session Carts", "Appointments", "General", "Product", "Newsletter", "Admin", "Registered Designers", "Customers"];
     if (value?.active === "Designers") value.active = "Registered Designers";
     if (value?.activeContentLink === "Designers") value.activeContentLink = "Registered Designers";
     if (contentSectionIds[value?.active]) {
@@ -272,7 +289,9 @@ function select(item) {
   activeContentLink.value = item;
   if (["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers"].includes(item)) expanded.value.Contents = true;
   if (["Admin", "Registered Designers", "Customers"].includes(item)) expanded.value.Users = true;
+  if (["Registered Carts", "Session Carts"].includes(item)) expanded.value.Carts = true;
   if (item === "Products") void loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
+  if (["Registered Carts", "Session Carts"].includes(item)) void loadAdminCarts({ page: 1 });
   if (item === "Admin") void loadAdminUsers();
   if (item === "Registered Designers") void loadDesigners();
 }
@@ -293,6 +312,11 @@ function selectGroup(group) {
     select("Admin");
     return;
   }
+  if (group.title === "Carts") {
+    expanded.value.Carts = true;
+    select("Registered Carts");
+    return;
+  }
   if (group.items.length) toggle(group);
   else select(group.title);
 }
@@ -306,7 +330,7 @@ function toggleMobileSidebar() {
     closeMobileSidebar();
     return;
   }
-  expanded.value = { ...expanded.value, Contents: false, Inquiries: false, Users: false };
+  expanded.value = { ...expanded.value, Contents: false, Carts: false, Inquiries: false, Users: false };
   isMobileSidebarOpen.value = true;
 }
 
@@ -451,11 +475,13 @@ watch(isAdminModalOpen, async (isOpen) => {
       ? shopTheLookDeleteDialog.value
       : isAdminProductDetailsOpen.value
         ? adminProductDialog.value
-        : isDesignerDetailsOpen.value
-          ? designerDetailsDialog.value
-          : isDesignerReviewOpen.value
-            ? designerReviewDialog.value
-            : heroBannerDeleteDialog.value;
+        : isAdminCartDetailsOpen.value
+          ? adminCartDialog.value
+          : isDesignerDetailsOpen.value
+            ? designerDetailsDialog.value
+            : isDesignerReviewOpen.value
+              ? designerReviewDialog.value
+              : heroBannerDeleteDialog.value;
   dialog?.querySelector("button, input, textarea, select")?.focus();
 });
 const apiBaseUrl = (
@@ -599,6 +625,68 @@ async function openAdminProductDetails(product) {
 function formatAdminProductPrice(product) {
   if (product.srp === null || product.srp === undefined) return "--";
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: product.currencyCode || "PHP", maximumFractionDigits: 2 }).format(product.srp);
+}
+
+function activeCartPath() {
+  return active.value === "Session Carts" ? "sessions" : "registered";
+}
+
+function buildAdminCartsQuery(page) {
+  const query = new URLSearchParams({ page: String(page), limit: "10" });
+  if (adminCartFilters.value.search.trim()) query.set("search", adminCartFilters.value.search.trim());
+  if (adminCartFilters.value.dateFrom) query.set("dateFrom", adminCartFilters.value.dateFrom);
+  if (adminCartFilters.value.dateTo) query.set("dateTo", adminCartFilters.value.dateTo);
+  return query;
+}
+
+async function loadAdminCarts({ page = adminCartPagination.value.page } = {}) {
+  if (!["Registered Carts", "Session Carts"].includes(active.value)) return;
+  isLoadingAdminCarts.value = true;
+  adminCartsError.value = "";
+  try {
+    const response = await authorizedRequest(`/api/v1/carts/${activeCartPath()}?${buildAdminCartsQuery(page)}`);
+    adminCarts.value = response.carts || [];
+    adminCartPagination.value = response.pagination;
+  } catch (error) {
+    adminCartsError.value = error.message;
+    adminCarts.value = [];
+  } finally {
+    isLoadingAdminCarts.value = false;
+  }
+}
+
+function scheduleAdminCartSearch() {
+  if (adminCartSearchTimer) window.clearTimeout(adminCartSearchTimer);
+  adminCartSearchTimer = window.setTimeout(() => void loadAdminCarts({ page: 1 }), 300);
+}
+
+function resetAdminCartFilters() {
+  adminCartFilters.value = { search: "", dateFrom: "", dateTo: "" };
+  void loadAdminCarts({ page: 1 });
+}
+
+async function openAdminCartDetails(cart) {
+  adminCartsError.value = "";
+  try {
+    const response = await authorizedRequest(`/api/v1/carts/${cart.id}`);
+    selectedAdminCart.value = response.cart;
+    isAdminCartDetailsOpen.value = true;
+  } catch (error) {
+    adminCartsError.value = error.message;
+  }
+}
+
+function formatAdminCartDate(value) {
+  if (!value) return "--";
+  return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function formatAdminCartPrice(cart) {
+  return new Intl.NumberFormat("en-PH", { style: "currency", currency: cart?.currencyCode || "PHP", maximumFractionDigits: 2 }).format(Number(cart?.totalPrice) || 0);
+}
+
+function adminCartStatusClass(status) {
+  return status === "Abandoned" ? "is-inactive" : "is-active";
 }
 
 async function loadAdminUsers() {
@@ -1119,6 +1207,7 @@ function clearStoredAdminSession() {
 
 async function loadRestoredAdminPage() {
   if (active.value === "Products") await loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
+  if (["Registered Carts", "Session Carts"].includes(active.value)) await loadAdminCarts({ page: 1 });
   if (active.value === "Admin") await loadAdminUsers();
   if (active.value === "Registered Designers") await loadDesigners();
   if (contentSectionIds[activeContentLink.value]) {
@@ -1481,7 +1570,7 @@ function showLogin() {
     </aside>
 
     <main class="admin-main">
-      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--users': ['Admin', 'Registered Designers', 'Customers'].includes(active) }">
+      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Session Carts'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers'].includes(active) }">
         <h1>{{ adminTopbarTitle }}</h1>
         <template v-if="active === 'Hero Banners'">
           <Transition name="admin-editor-slide">
@@ -1919,6 +2008,56 @@ function showLogin() {
                     <h3 id="admin-product-attributes-title">Attributes</h3>
                     <dl><template v-for="attribute in selectedAdminProduct.attributes" :key="attribute.key"><dt>{{ attribute.name }}</dt><dd>{{ attribute.value }}</dd></template></dl>
                   </section>
+                </section>
+              </div>
+            </Transition>
+          </Teleport>
+        </template>
+        <template v-else-if="['Registered Carts', 'Session Carts'].includes(active)">
+          <section class="admin-carts" aria-labelledby="admin-carts-title">
+            <p id="admin-carts-title" class="admin-carts__intro">Active carts with at least one item. Carts without activity for seven days are marked abandoned.</p>
+            <div class="admin-carts__filters" aria-label="Cart filters">
+              <label class="admin-carts__search"><span><i class="pi pi-search" aria-hidden="true"></i> Search {{ active === 'Registered Carts' ? 'registered carts' : 'session carts' }}</span><input v-model="adminCartFilters.search" type="search" :placeholder="active === 'Registered Carts' ? 'Email, first name, or last name' : 'Session ID'" @input="scheduleAdminCartSearch" /></label>
+              <label><span>Date from</span><input v-model="adminCartFilters.dateFrom" type="date" @change="loadAdminCarts({ page: 1 })" /></label>
+              <label><span>Date to</span><input v-model="adminCartFilters.dateTo" type="date" :min="adminCartFilters.dateFrom || undefined" @change="loadAdminCarts({ page: 1 })" /></label>
+              <button type="button" @click="resetAdminCartFilters"><i class="pi pi-filter-slash" aria-hidden="true"></i> Reset filters</button>
+            </div>
+            <p v-if="adminCartsError" class="admin-carts__error" role="alert">{{ adminCartsError }}</p>
+            <DataTable
+              :value="adminCarts"
+              :loading="isLoadingAdminCarts"
+              :lazy="true"
+              paginator
+              :rows="10"
+              :first="(adminCartPagination.page - 1) * 10"
+              :totalRecords="adminCartPagination.totalItems"
+              :rowsPerPageOptions="[]"
+              class="admin-carts__table"
+              dataKey="id"
+              @page="loadAdminCarts({ page: $event.page + 1 })"
+            >
+              <template #empty><div class="admin-carts__empty">No {{ active === 'Registered Carts' ? 'registered' : 'session' }} carts match the selected filters.</div></template>
+              <template #loading><div class="admin-carts__empty">Loading carts…</div></template>
+              <Column header="Date Created" style="min-width: 175px"><template #body="{ data }">{{ formatAdminCartDate(data.createdAt) }}</template></Column>
+              <Column header="Date Updated" style="min-width: 175px"><template #body="{ data }">{{ formatAdminCartDate(data.updatedAt) }}</template></Column>
+              <template v-if="active === 'Registered Carts'">
+                <Column field="email" header="Email" style="min-width: 250px" />
+                <Column field="name" header="Name" style="min-width: 190px" />
+              </template>
+              <Column v-else field="sessionId" header="Session ID" style="min-width: 265px"><template #body="{ data }"><code class="admin-carts__session-id">{{ data.sessionId }}</code></template></Column>
+              <Column header="Total Cart Price" style="min-width: 155px"><template #body="{ data }"><strong class="admin-carts__price">{{ formatAdminCartPrice(data) }}</strong></template></Column>
+              <Column header="Status" style="min-width: 120px"><template #body="{ data }"><span class="admin-users__role" :class="adminCartStatusClass(data.status)">{{ data.status }}</span></template></Column>
+              <Column header="Actions" style="width: 100px"><template #body="{ data }"><button class="admin-product-action" type="button" :aria-label="`View cart ${data.id}`" title="View cart" @click="openAdminCartDetails(data)"><i class="pi pi-eye" aria-hidden="true"></i></button></template></Column>
+            </DataTable>
+          </section>
+
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="isAdminCartDetailsOpen" class="admin-product-dialog-backdrop" role="presentation" @click.self="isAdminCartDetailsOpen = false">
+                <section ref="adminCartDialog" class="admin-product-dialog admin-cart-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-cart-dialog-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, adminCartDialog)">
+                  <header><div><p class="admin-eyebrow">{{ selectedAdminCart?.email ? 'Registered cart' : 'Session cart' }}</p><h2 id="admin-cart-dialog-title">{{ selectedAdminCart?.email || selectedAdminCart?.sessionId }}</h2></div><button type="button" aria-label="Close cart details" @click="isAdminCartDetailsOpen = false"><i class="pi pi-times" aria-hidden="true"></i></button></header>
+                  <dl class="admin-cart-dialog__summary"><div><dt>Created</dt><dd>{{ formatAdminCartDate(selectedAdminCart?.createdAt) }}</dd></div><div><dt>Last Updated</dt><dd>{{ formatAdminCartDate(selectedAdminCart?.updatedAt) }}</dd></div><div v-if="selectedAdminCart?.email"><dt>Customer</dt><dd>{{ selectedAdminCart?.name }}</dd></div><div><dt>Status</dt><dd><span class="admin-users__role" :class="adminCartStatusClass(selectedAdminCart?.status)">{{ selectedAdminCart?.status }}</span></dd></div><div><dt>Cart Total</dt><dd>{{ formatAdminCartPrice(selectedAdminCart) }}</dd></div></dl>
+                  <section class="admin-cart-dialog__items" aria-labelledby="admin-cart-items-title"><h3 id="admin-cart-items-title">Cart Items <small>{{ selectedAdminCart?.itemCount || 0 }}</small></h3><article v-for="item in selectedAdminCart?.items || []" :key="item.id"><img v-if="item.image" :src="item.image" :alt="item.name" /><span v-else class="admin-cart-dialog__image-placeholder"><i class="pi pi-image" aria-hidden="true"></i></span><div><strong>{{ item.name }}</strong><small v-if="item.edpNumber && item.edpNumber !== '--'">EDP: {{ item.edpNumber }}</small><small>Quantity: {{ item.quantity }}</small></div><b>{{ formatAdminCartPrice({ totalPrice: item.totalPrice, currencyCode: selectedAdminCart?.currencyCode }) }}</b></article></section>
                 </section>
               </div>
             </Transition>
