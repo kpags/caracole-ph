@@ -1,9 +1,9 @@
 import express from 'express'
 import { z } from 'zod'
 import { asyncRoute, HttpError } from '../lib/http.js'
+import { ABANDONED_AFTER_DAYS } from '../lib/cart-abandonment.js'
 
 const PAGE_SIZE = 10
-const ABANDONED_AFTER_DAYS = 7
 
 const cartItemSchema = z.object({
   id: z.string().trim().min(1).max(180),
@@ -73,7 +73,7 @@ export function serializeCart(cart, now = new Date()) {
     itemCount: cart.itemCount,
     totalPrice: Number(cart.totalPrice),
     currencyCode: cart.currencyCode,
-    status: cartStatus(cart.updatedAt, now)
+    status: cart.status === 'ABANDONED' ? 'Abandoned' : cart.status === 'ACTIVE' ? 'Active' : cartStatus(cart.updatedAt, now)
   }
 }
 
@@ -109,6 +109,7 @@ export function cartsRoutes({ prisma, authenticate, authorize }) {
       create: {
         ownerKey,
         ownerType,
+        status: 'ACTIVE',
         sessionId: body.sessionId,
         customerEmail: customer?.email || null,
         customerFirstName: customer?.firstName || null,
@@ -119,6 +120,7 @@ export function cartsRoutes({ prisma, authenticate, authorize }) {
       },
       update: {
         sessionId: body.sessionId,
+        status: 'ACTIVE',
         customerEmail: customer?.email || null,
         customerFirstName: customer?.firstName || null,
         customerLastName: customer?.lastName || null,

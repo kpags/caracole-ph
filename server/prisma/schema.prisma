@@ -23,6 +23,11 @@ enum CartOwnerType {
   SESSION
 }
 
+enum CartStatus {
+  ACTIVE
+  ABANDONED
+}
+
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -262,6 +267,7 @@ model Cart {
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
   ownerKey          String        @unique @map("owner_key") @db.VarChar(360)
   ownerType         CartOwnerType @map("owner_type")
+  status            CartStatus    @default(ACTIVE) @map("status")
   sessionId         String        @map("session_id") @db.VarChar(180)
   customerEmail     String?       @map("customer_email") @db.VarChar(320)
   customerFirstName String?       @map("customer_first_name") @db.VarChar(100)
@@ -273,6 +279,7 @@ model Cart {
 
   @@index([ownerType, itemCount, createdAt])
   @@index([ownerType, itemCount, updatedAt])
+  @@index([status, updatedAt])
   @@index([customerEmail])
   @@map("carts")
 }

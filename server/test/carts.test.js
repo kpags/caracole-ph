@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { cartItems, cartListWhere, cartStatus, serializeCart } from '../src/routes/carts.js'
+import { abandonInactiveCarts, abandonedCartCutoff } from '../src/lib/cart-abandonment.js'
 
 const now = new Date('2026-09-01T00:00:00.000Z')
 const baseCart = {
@@ -46,4 +47,16 @@ test('registered and session cart filters are indexed around their owner fields 
   assert.equal(registered.createdAt.lte.toISOString(), '2026-08-31T23:59:59.999Z')
   const session = cartListWhere('SESSION', { search: 'abc' })
   assert.deepEqual(session.sessionId, { contains: 'abc', mode: 'insensitive' })
+})
+
+test('abandonment cleanup changes only active carts inactive for seven days', async () => {
+  const calls = []
+  const now = new Date('2026-09-01T06:00:00.000Z')
+  const result = await abandonInactiveCarts({ cart: { updateMany: async (input) => { calls.push(input); return { count: 3 } } } }, { now, logger: { log() {} } })
+  assert.equal(abandonedCartCutoff(now).toISOString(), '2026-08-25T06:00:00.000Z')
+  assert.equal(result.count, 3)
+  assert.deepEqual(calls[0], {
+    where: { status: 'ACTIVE', itemCount: { gt: 0 }, updatedAt: { lte: new Date('2026-08-25T06:00:00.000Z') } },
+    data: { status: 'ABANDONED' }
+  })
 })
