@@ -156,6 +156,10 @@ const isCustomerDetailsOpen = ref(false);
 const isCustomerOrdersOpen = ref(false);
 const isLoadingCustomerOrders = ref(false);
 const customerOrdersError = ref("");
+const newsletterSubscribers = ref([]);
+const newsletterPagination = ref({ page: 1, limit: 10, totalItems: 0, totalPages: 0 });
+const isLoadingNewsletterSubscribers = ref(false);
+const newsletterSubscribersError = ref("");
 const designers = ref([]);
 const designerStatusFilter = ref("");
 const isLoadingDesigners = ref(false);
@@ -315,6 +319,7 @@ function select(item) {
   if (["Registered Carts", "Guest Carts"].includes(item)) void loadAdminCarts({ page: 1 });
   if (item === "Admin") void loadAdminUsers();
   if (item === "Customers") void loadCustomers(1);
+  if (item === "Newsletter") void loadNewsletterSubscribers({ page: 1 });
   if (item === "Registered Designers") void loadDesigners();
 }
 
@@ -744,6 +749,22 @@ async function loadCustomers(page = customerPagination.value.page) {
     customersError.value = error.message;
     customers.value = [];
   } finally { isLoadingCustomers.value = false; }
+}
+
+async function loadNewsletterSubscribers({ page = newsletterPagination.value.page } = {}) {
+  isLoadingNewsletterSubscribers.value = true;
+  newsletterSubscribersError.value = "";
+  try {
+    const query = new URLSearchParams({ page: String(page), limit: "10" });
+    const response = await authorizedRequest(`/api/v1/newsletter/subscriptions?${query}`);
+    newsletterSubscribers.value = response.subscribers || [];
+    newsletterPagination.value = response.pagination;
+  } catch (error) {
+    newsletterSubscribersError.value = error.message;
+    newsletterSubscribers.value = [];
+  } finally {
+    isLoadingNewsletterSubscribers.value = false;
+  }
 }
 
 function scheduleCustomerSearch() {
@@ -1322,6 +1343,7 @@ async function loadRestoredAdminPage() {
   if (["Registered Carts", "Guest Carts"].includes(active.value)) await loadAdminCarts({ page: 1 });
   if (active.value === "Admin") await loadAdminUsers();
   if (active.value === "Customers") await loadCustomers(1);
+  if (active.value === "Newsletter") await loadNewsletterSubscribers({ page: 1 });
   if (active.value === "Registered Designers") await loadDesigners();
   if (contentSectionIds[activeContentLink.value]) {
     await nextTick();
@@ -1683,7 +1705,7 @@ function showLogin() {
     </aside>
 
     <main class="admin-main">
-      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Guest Carts'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers'].includes(active) }">
+      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Guest Carts'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers', 'Newsletter'].includes(active) }">
         <h1>{{ adminTopbarTitle }}</h1>
         <template v-if="active === 'Hero Banners'">
           <Transition name="admin-editor-slide">
@@ -2175,6 +2197,18 @@ function showLogin() {
               </div>
             </Transition>
           </Teleport>
+        </template>
+        <template v-else-if="active === 'Newsletter'">
+          <section class="admin-users" aria-labelledby="newsletter-title">
+            <p id="newsletter-title" class="admin-users__intro">Email addresses submitted through the storefront newsletter form.</p>
+            <p v-if="newsletterSubscribersError" class="admin-users__error" role="alert">{{ newsletterSubscribersError }}</p>
+            <DataTable :value="newsletterSubscribers" :loading="isLoadingNewsletterSubscribers" :lazy="true" paginator :rows="10" :first="(newsletterPagination.page - 1) * 10" :totalRecords="newsletterPagination.totalItems" :rowsPerPageOptions="[]" class="admin-users__table" dataKey="id" @page="loadNewsletterSubscribers({ page: $event.page + 1 })">
+              <template #empty><div class="admin-users__empty">No newsletter subscribers yet.</div></template>
+              <template #loading><div class="admin-users__empty">Loading newsletter subscribers…</div></template>
+              <Column field="email" header="Email" style="min-width: 330px" />
+              <Column header="Date Subscribed" style="min-width: 210px"><template #body="{ data }">{{ formatAdminCartDate(data.createdAt) }}</template></Column>
+            </DataTable>
+          </section>
         </template>
         <template v-else-if="active === 'Admin'">
           <section class="admin-users" aria-labelledby="admin-users-title">

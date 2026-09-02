@@ -104,6 +104,15 @@ model CustomerSyncRun {
   @@map("customer_sync_runs")
 }
 
+model NewsletterSubscriber {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  email     String   @unique @db.VarChar(320)
+
+  @@index([createdAt])
+  @@map("newsletter_subscribers")
+}
+
 model Designer {
   id           String    @id @default(uuid()) @db.Uuid
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

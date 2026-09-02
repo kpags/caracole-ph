@@ -486,8 +486,10 @@ const videoProgress = ref(0);
 const menuOpen = ref(false);
 const activeMenuCategory = ref(null);
 const lookIndex = ref(0);
-const newsletterSent = ref(false);
+const isSubmittingNewsletter = ref(false);
+const newsletterToast = ref(null);
 const email = ref("");
+let newsletterToastTimer = null;
 const locationImageIndexes = ref(locations.map(() => 0));
 const locationTimers = new Map();
 const lookMediaViewport = ref(null);
@@ -784,9 +786,32 @@ function toggleMenu() {
   if (!menuOpen.value) activeMenuCategory.value = null;
 }
 
-function submitNewsletter() {
-  if (!email.value) return;
-  newsletterSent.value = true;
+async function submitNewsletter() {
+  isSubmittingNewsletter.value = true;
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/newsletter/subscriptions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.value }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.message || "Unable to subscribe. Please try again.");
+    email.value = "";
+    showNewsletterToast(body.message || "You are now subscribed to the Caracole PH newsletter.", "success");
+  } catch (error) {
+    showNewsletterToast(error.message, "error");
+  } finally {
+    isSubmittingNewsletter.value = false;
+  }
+}
+
+function showNewsletterToast(message, type) {
+  if (newsletterToastTimer) window.clearTimeout(newsletterToastTimer);
+  newsletterToast.value = { message, type };
+  newsletterToastTimer = window.setTimeout(() => {
+    newsletterToast.value = null;
+    newsletterToastTimer = null;
+  }, 4200);
 }
 
 function startLocationCarousel(index) {
@@ -1312,6 +1337,7 @@ onBeforeUnmount(() => {
   locationTimers.clear();
   categoryTimers.forEach((timer) => window.clearInterval(timer));
   categoryTimers.clear();
+  if (newsletterToastTimer) window.clearTimeout(newsletterToastTimer);
   document.body.classList.remove("modal-scroll-lock");
   const appRoot = document.getElementById("app");
   if (appRoot) appRoot.inert = false;
@@ -2616,32 +2642,6 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section class="newsletter">
-        <div>
-          <p class="eyebrow light">A world of considered beauty</p>
-          <h2>Stay inspired.</h2>
-          <p>
-            New collections, room stories, and invitations from Caracole
-            Philippines.
-          </p>
-        </div>
-        <form @submit.prevent="submitNewsletter">
-          <template v-if="!newsletterSent">
-            <label class="sr-only" for="email">Email address</label>
-            <input
-              id="email"
-              v-model="email"
-              type="email"
-              placeholder="Your email address"
-              required
-            />
-            <button type="submit">Join the list ↗</button>
-          </template>
-          <p v-else class="newsletter-thanks">
-            Thank you. Welcome to the world of Caracole.
-          </p>
-        </form>
-      </section>
     </main>
 
     <ProductListingPage
@@ -2723,37 +2723,55 @@ onBeforeUnmount(() => {
       </Transition>
     </Teleport>
 
+    <Teleport to="body">
+      <Transition name="newsletter-toast">
+        <div v-if="newsletterToast" class="newsletter-toast" :class="`newsletter-toast--${newsletterToast.type}`" role="status" aria-live="polite">
+          <i :class="newsletterToast.type === 'success' ? 'pi pi-check-circle' : 'pi pi-exclamation-circle'" aria-hidden="true"></i>
+          <div><strong>{{ newsletterToast.type === 'success' ? 'Newsletter subscription confirmed' : 'Unable to subscribe' }}</strong><span>{{ newsletterToast.message }}</span></div>
+          <button type="button" aria-label="Dismiss notification" @click="newsletterToast = null"><i class="pi pi-times" aria-hidden="true"></i></button>
+        </div>
+      </Transition>
+    </Teleport>
+
     <footer class="footer">
       <div class="footer-brand">
         <img src="/brand/caracole-logo.png" alt="Caracole" />
         <p>Modern luxury,<br />made personal.</p>
       </div>
-      <div class="footer-links">
-        <div>
-          <span>Explore</span><a href="/products/living">Living</a
-          ><a href="/products/dining">Dining</a
-          ><a href="/products/bedroom">Bedroom</a
-          ><a href="/products/mirrors-accessories">Mirrors &amp; Accessories</a
-          ><a href="/products/entertainment">Entertainment</a
-          ><a href="/products/new-arrivals">New Arrivals</a>
-        </div>
-        <div>
-          <span>Discover</span><a :href="homeLink('#story')">Our Story</a
-          ><a href="/designers">Designers</a
-          ><a href="/testimonials">Testimonials</a
-          ><a href="/wishlist">Wishlist</a
-          ><a href="/shop-the-look">Shop the Look</a
-          ><button type="button" @click="openServiceModal('appointment')">
-            Book an Appointment</button
-          ><button type="button" @click="openServiceModal('contact')">
-            Contact Us
-          </button>
-        </div>
-        <div>
-          <span>Follow</span
-          ><a href="https://www.instagram.com/caracoleph/">Instagram</a
-          ><a href="https://www.facebook.com/caracolephilippines/">Facebook</a
-          ><a href="https://www.pinterest.com/">Pinterest</a>
+      <div class="footer-content">
+        <form class="footer-newsletter" @submit.prevent="submitNewsletter">
+          <p>Considered updates</p>
+          <label for="newsletter-email">Subscribe to our newsletter</label>
+          <div class="footer-newsletter__controls"><input id="newsletter-email" v-model="email" type="email" placeholder="Email Address" autocomplete="email" required :disabled="isSubmittingNewsletter" /><button type="submit" :disabled="isSubmittingNewsletter">{{ isSubmittingNewsletter ? 'Joining…' : 'Join' }} <i class="pi pi-arrow-up-right" aria-hidden="true"></i></button></div>
+          <small>Promotions, events, and announcements from Caracole PH.</small>
+        </form>
+        <div class="footer-links">
+          <div>
+            <span>Explore</span><a href="/products/living">Living</a
+            ><a href="/products/dining">Dining</a
+            ><a href="/products/bedroom">Bedroom</a
+            ><a href="/products/mirrors-accessories">Mirrors &amp; Accessories</a
+            ><a href="/products/entertainment">Entertainment</a
+            ><a href="/products/new-arrivals">New Arrivals</a>
+          </div>
+          <div>
+            <span>Discover</span><a :href="homeLink('#story')">Our Story</a
+            ><a href="/designers">Designers</a
+            ><a href="/testimonials">Testimonials</a
+            ><a href="/wishlist">Wishlist</a
+            ><a href="/shop-the-look">Shop the Look</a
+            ><button type="button" @click="openServiceModal('appointment')">
+              Book an Appointment</button
+            ><button type="button" @click="openServiceModal('contact')">
+              Contact Us
+            </button>
+          </div>
+          <div>
+            <span>Follow</span
+            ><a href="https://www.instagram.com/caracoleph/">Instagram</a
+            ><a href="https://www.facebook.com/caracolephilippines/">Facebook</a
+            ><a href="https://www.pinterest.com/">Pinterest</a>
+          </div>
         </div>
       </div>
       <div class="footer-bottom">

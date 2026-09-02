@@ -95,6 +95,16 @@ export function createMailer(config) {
         text: `A new designer registration is awaiting review. Name: ${context.fullName}; email: ${context.email}; mobile: ${context.mobileNumber}. Review it at ${context.adminDashboardUrl}.`
       })
     },
+    async sendNewsletterSubscriptionConfirmation({ email, config: appConfig }) {
+      const render = await loadTemplate('newsletter-subscription-confirmation')
+      await transporter.sendMail({
+        from: appConfig.EMAIL_FROM,
+        to: email,
+        subject: 'Thank You for Subscribing to our Newsletter',
+        html: render({ appName: appConfig.APP_NAME }),
+        text: `Thank you for subscribing to ${appConfig.APP_NAME}. You will now receive promotions, events, and announcements from Caracole Philippines.`
+      })
+    },
     async sendDesignerReviewDecision({ designer, status, config: appConfig }) {
       const approved = status === 'APPROVED'
       const render = await loadTemplate(approved ? 'designer-approved' : 'designer-rejected')
