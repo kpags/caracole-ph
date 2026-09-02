@@ -138,6 +138,11 @@ const adminUsers = ref([]);
 const adminUserSearch = ref("");
 const adminUserRole = ref("");
 const isLoadingAdminUsers = ref(false);
+const customers = ref([]);
+const customerSearch = ref("");
+const customerPagination = ref({ page: 1, pageSize: 10, total: 0 });
+const isLoadingCustomers = ref(false);
+const customersError = ref("");
 const designers = ref([]);
 const designerStatusFilter = ref("");
 const isLoadingDesigners = ref(false);
@@ -166,6 +171,7 @@ let shopTheLookToastTimer = null;
 let adminProductSearchTimer = null;
 let adminCartSearchTimer = null;
 let adminUserSearchTimer = null;
+let customerSearchTimer = null;
 
 const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((position) => ({
   position,
@@ -295,6 +301,7 @@ function select(item) {
   if (item === "Products") void loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
   if (["Registered Carts", "Guest Carts"].includes(item)) void loadAdminCarts({ page: 1 });
   if (item === "Admin") void loadAdminUsers();
+  if (item === "Customers") void loadCustomers(1);
   if (item === "Registered Designers") void loadDesigners();
 }
 
@@ -706,6 +713,30 @@ async function loadAdminUsers() {
   } finally {
     isLoadingAdminUsers.value = false;
   }
+}
+
+async function loadCustomers(page = customerPagination.value.page) {
+  isLoadingCustomers.value = true;
+  customersError.value = "";
+  try {
+    const query = new URLSearchParams({ page: String(page), pageSize: String(customerPagination.value.pageSize) });
+    if (customerSearch.value.trim()) query.set("search", customerSearch.value.trim());
+    const response = await authorizedRequest(`/api/v1/users/customers?${query}`);
+    customers.value = response.customers || [];
+    customerPagination.value = { page: response.page, pageSize: response.pageSize, total: response.total };
+  } catch (error) {
+    customersError.value = error.message;
+    customers.value = [];
+  } finally { isLoadingCustomers.value = false; }
+}
+
+function scheduleCustomerSearch() {
+  if (customerSearchTimer) window.clearTimeout(customerSearchTimer);
+  customerSearchTimer = window.setTimeout(() => void loadCustomers(1), 300);
+}
+
+function formatCustomerSpend(customer) {
+  return new Intl.NumberFormat("en-PH", { style: "currency", currency: customer.currencyCode || "PHP", maximumFractionDigits: 2 }).format(Number(customer.amountSpent) || 0);
 }
 
 function scheduleAdminUserSearch() {
@@ -1211,6 +1242,7 @@ async function loadRestoredAdminPage() {
   if (active.value === "Products") await loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
   if (["Registered Carts", "Guest Carts"].includes(active.value)) await loadAdminCarts({ page: 1 });
   if (active.value === "Admin") await loadAdminUsers();
+  if (active.value === "Customers") await loadCustomers(1);
   if (active.value === "Registered Designers") await loadDesigners();
   if (contentSectionIds[activeContentLink.value]) {
     await nextTick();
@@ -2138,7 +2170,16 @@ function showLogin() {
           </Teleport>
         </template>
         <template v-else-if="active === 'Customers'">
-          <section class="admin-users admin-users--empty" aria-labelledby="customers-title"><p id="customers-title">No customers yet.</p></section>
+          <section class="admin-users" aria-labelledby="customers-title">
+            <p id="customers-title" class="admin-users__intro">Customer profiles reconciled from Shopify and website registrations.</p>
+            <div class="admin-users__filters"><label class="admin-users__search"><span><i class="pi pi-search" aria-hidden="true"></i> Search customers</span><input v-model="customerSearch" type="search" placeholder="First name, last name, or email" @input="scheduleCustomerSearch" /></label></div>
+            <p v-if="customersError" class="admin-users__error" role="alert">{{ customersError }}</p>
+            <DataTable :value="customers" :loading="isLoadingCustomers" paginator :rows="customerPagination.pageSize" :totalRecords="customerPagination.total" lazy @page="loadCustomers($event.page + 1)" class="admin-users__table" dataKey="id">
+              <template #empty><div class="admin-users__empty">No customers match the search.</div></template><template #loading><div class="admin-users__empty">Loading customers…</div></template>
+              <Column field="email" header="Email" style="min-width: 260px" /><Column field="name" header="Name" style="min-width: 190px" /><Column field="phone" header="Phone" style="min-width: 150px" /><Column field="shopifyState" header="Shopify State" style="min-width: 130px" />
+              <Column header="Verified" style="min-width: 105px"><template #body="{ data }"><span class="admin-users__role" :class="data.verifiedEmail ? 'is-active' : 'is-inactive'">{{ data.verifiedEmail ? 'Yes' : 'No' }}</span></template></Column><Column field="orderCount" header="Orders" style="min-width: 90px" /><Column header="Spend" style="min-width: 135px"><template #body="{ data }">{{ formatCustomerSpend(data) }}</template></Column><Column header="Last Sync" style="min-width: 180px"><template #body="{ data }">{{ formatAdminCartDate(data.lastSyncedAt) }}</template></Column>
+            </DataTable>
+          </section>
         </template>
         <div v-else class="admin-placeholder">Hello World</div>
       </section>

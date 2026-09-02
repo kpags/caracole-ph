@@ -10,6 +10,7 @@ import { adminProductsRoutes } from './routes/admin-products.js'
 import { contentDisplaysRoutes } from './routes/content-displays.js'
 import { cartsRoutes } from './routes/carts.js'
 import { asyncRoute, errorHandler, HttpError } from './lib/http.js'
+import { createShopifyCustomerService } from './lib/shopify-customers.js'
 
 export function createApp({ prisma, config, auth, mailer, storage, products }) {
   const app = express()
@@ -42,7 +43,7 @@ export function createApp({ prisma, config, auth, mailer, storage, products }) {
     await prisma.$queryRaw`SELECT 1`
     res.json({ status: 'ok' })
   }))
-  app.use('/api/v1/auth', authRoutes({ prisma, config, auth, mailer }))
+  app.use('/api/v1/auth', authRoutes({ prisma, config, auth, mailer, shopifyCustomers: createShopifyCustomerService(config) }))
   app.use('/api/v1/hero-banners', heroBannersRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/shop-the-look', shopTheLookRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/content', contentDisplaysRoutes({ prisma, storage, authenticate, authorize }))

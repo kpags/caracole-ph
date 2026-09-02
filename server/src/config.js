@@ -31,6 +31,7 @@ export const config = z.object({
   SHOPIFY_STORE_DOMAIN: z.string().min(1),
   SHOPIFY_STOREFRONT_API_VERSION: z.string().regex(/^\d{4}-\d{2}$/).default('2026-07'),
   SHOPIFY_PRIVATE_ACCESS_TOKEN: z.string().min(1),
+  SHOPIFY_PUBLIC_ACCESS_TOKEN: z.string().min(1).optional(),
   SHOPIFY_CLIENT_ID: z.string().min(1),
   SHOPIFY_CLIENT_SECRET: z.string().min(1),
   SHOPIFY_VENDOR: z.string().min(1).default('Caracole'),

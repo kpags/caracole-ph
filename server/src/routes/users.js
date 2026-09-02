@@ -12,6 +12,12 @@ const adminListQuery = z.object({
   role: z.enum(['staff', 'superuser']).optional()
 })
 
+const customerListQuery = z.object({
+  search: z.string().trim().min(1).max(120).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10)
+})
+
 const reviewSchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED'])
 }).strict()
@@ -69,6 +75,22 @@ export function serializeDesignerUser(user) {
     reviewedBy: designer?.reviewedBy || null,
     emailVerified: user.isEmailVerified,
     active: user.isActive
+  }
+}
+
+export function serializeCustomerUser(user) {
+  const customer = user.customer
+  return {
+    id: user.id,
+    email: user.email,
+    name: [user.firstName, user.lastName].filter(Boolean).join(' ') || '--',
+    phone: customer?.phone || '--',
+    shopifyState: customer?.shopifyState || '--',
+    verifiedEmail: customer?.shopifyVerifiedEmail ?? user.isEmailVerified,
+    orderCount: customer?.orderCount || 0,
+    amountSpent: customer?.amountSpent?.toString?.() ?? customer?.amountSpent ?? null,
+    currencyCode: customer?.currencyCode || 'PHP',
+    lastSyncedAt: customer?.lastSyncedAt || null
   }
 }
 
@@ -154,6 +176,28 @@ export function usersRoutes({ prisma, config, mailer, authenticate, authorize })
     const user = await prisma.user.findFirst({ where: { id, isActive: true, isDesigner: true, designer: { isNot: null } }, select: userSelect })
     if (!user) throw new HttpError(404, 'Designer not found')
     res.json({ designer: serializeDesignerUser(user) })
+  }))
+
+  router.get('/customers', authorize('staff'), asyncRoute(async (req, res) => {
+    const query = customerListQuery.parse(req.query)
+    const where = {
+      isDesigner: false,
+      isStaff: false,
+      isSuperuser: false,
+      customer: { isNot: null },
+      ...(query.search ? {
+        OR: [
+          { email: { contains: query.search, mode: 'insensitive' } },
+          { firstName: { contains: query.search, mode: 'insensitive' } },
+          { lastName: { contains: query.search, mode: 'insensitive' } }
+        ]
+      } : {})
+    }
+    const [total, users] = await prisma.$transaction([
+      prisma.user.count({ where }),
+      prisma.user.findMany({ where, select: userSelect, orderBy: { createdAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize })
+    ])
+    res.json({ customers: users.map(serializeCustomerUser), total, page: query.page, pageSize: query.pageSize })
   }))
 
   router.patch('/designers/:id/review', authorize('staff'), asyncRoute(async (req, res) => {

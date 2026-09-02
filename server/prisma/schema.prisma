@@ -28,6 +28,11 @@ enum CartStatus {
   ABANDONED
 }
 
+enum CustomerSource {
+  WEBSITE
+  SHOPIFY
+}
+
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -42,11 +47,39 @@ model User {
   isActive          Boolean        @default(true) @map("is_active")
   isEmailVerified   Boolean        @default(false) @map("is_email_verified")
   designer          Designer?
+  customer          Customer?
   reviewedDesigners Designer[]      @relation("DesignerReviewedBy")
   refreshTokens     RefreshToken[]
   otpCodes          OtpCode[]
 
+  @@index([isActive, isEmailVerified, isDesigner, isStaff, isSuperuser, createdAt])
   @@map("users")
+}
+
+model Customer {
+  id                  String         @id @default(uuid()) @db.Uuid
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  userId              String         @unique @map("user_id") @db.Uuid
+  shopifyId           String?        @unique @map("shopify_id")
+  source              CustomerSource @default(SHOPIFY)
+  phone               String?        @db.VarChar(60)
+  shopifyState        String?        @map("shopify_state") @db.VarChar(40)
+  shopifyVerifiedEmail Boolean?      @map("shopify_verified_email")
+  orderCount          Int            @default(0) @map("order_count")
+  amountSpent         Decimal?       @map("amount_spent") @db.Decimal(14, 2)
+  currencyCode        String?        @map("currency_code") @db.VarChar(3)
+  tags                String[]       @default([])
+  defaultAddress      Json?          @map("default_address")
+  shopifyCreatedAt    DateTime?      @map("shopify_created_at") @db.Timestamptz(6)
+  shopifyUpdatedAt    DateTime?      @map("shopify_updated_at") @db.Timestamptz(6)
+  lastSyncedAt        DateTime?      @map("last_synced_at") @db.Timestamptz(6)
+  legacyInvitationSentAt DateTime?   @map("legacy_invitation_sent_at") @db.Timestamptz(6)
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([source])
+  @@index([lastSyncedAt])
+  @@map("customers")
 }
 
 model Designer {

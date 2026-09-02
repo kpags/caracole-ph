@@ -14,7 +14,8 @@ export const userSelect = {
     include: {
       reviewedBy: { select: { id: true, email: true } }
     }
-  }
+  },
+  customer: true
 }
 
 export function designerData(designer) {
