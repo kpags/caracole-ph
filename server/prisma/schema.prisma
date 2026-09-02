@@ -33,6 +33,12 @@ enum CustomerSource {
   SHOPIFY
 }
 
+enum CustomerSyncStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -80,6 +86,22 @@ model Customer {
   @@index([source])
   @@index([lastSyncedAt])
   @@map("customers")
+}
+
+model CustomerSyncRun {
+  id            String             @id @default(uuid()) @db.Uuid
+  startedAt     DateTime           @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt    DateTime?          @map("finished_at") @db.Timestamptz(6)
+  status        CustomerSyncStatus @default(RUNNING)
+  fetchedCount  Int                @default(0) @map("fetched_count")
+  createdCount  Int                @default(0) @map("created_count")
+  updatedCount  Int                @default(0) @map("updated_count")
+  conflictCount Int                @default(0) @map("conflict_count")
+  removedCount  Int                @default(0) @map("removed_count")
+  error         String?
+
+  @@index([startedAt])
+  @@map("customer_sync_runs")
 }
 
 model Designer {

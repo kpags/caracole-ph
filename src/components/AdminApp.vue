@@ -140,9 +140,22 @@ const adminUserRole = ref("");
 const isLoadingAdminUsers = ref(false);
 const customers = ref([]);
 const customerSearch = ref("");
+const customerShopifyState = ref("");
+const customerMinSpend = ref("");
+const customerMaxSpend = ref("");
 const customerPagination = ref({ page: 1, pageSize: 10, total: 0 });
 const isLoadingCustomers = ref(false);
 const customersError = ref("");
+const customerSyncMessage = ref("");
+const customerSyncFailed = ref(false);
+const isCustomerSyncing = ref(false);
+const selectedCustomer = ref(null);
+const customerOrders = ref([]);
+const customerOrdersPageInfo = ref(null);
+const isCustomerDetailsOpen = ref(false);
+const isCustomerOrdersOpen = ref(false);
+const isLoadingCustomerOrders = ref(false);
+const customerOrdersError = ref("");
 const designers = ref([]);
 const designerStatusFilter = ref("");
 const isLoadingDesigners = ref(false);
@@ -721,6 +734,9 @@ async function loadCustomers(page = customerPagination.value.page) {
   try {
     const query = new URLSearchParams({ page: String(page), pageSize: String(customerPagination.value.pageSize) });
     if (customerSearch.value.trim()) query.set("search", customerSearch.value.trim());
+    if (customerShopifyState.value) query.set("shopifyState", customerShopifyState.value);
+    if (customerMinSpend.value) query.set("minSpend", customerMinSpend.value);
+    if (customerMaxSpend.value) query.set("maxSpend", customerMaxSpend.value);
     const response = await authorizedRequest(`/api/v1/users/customers?${query}`);
     customers.value = response.customers || [];
     customerPagination.value = { page: response.page, pageSize: response.pageSize, total: response.total };
@@ -733,6 +749,69 @@ async function loadCustomers(page = customerPagination.value.page) {
 function scheduleCustomerSearch() {
   if (customerSearchTimer) window.clearTimeout(customerSearchTimer);
   customerSearchTimer = window.setTimeout(() => void loadCustomers(1), 300);
+}
+
+function resetCustomerFilters() {
+  customerSearch.value = "";
+  customerShopifyState.value = "";
+  customerMinSpend.value = "";
+  customerMaxSpend.value = "";
+  void loadCustomers(1);
+}
+
+async function pollCustomerSync() {
+  try {
+    const response = await authorizedRequest("/api/v1/users/customers/sync");
+    const run = response.run;
+    if (run?.status === "RUNNING") { window.setTimeout(() => void pollCustomerSync(), 2000); return; }
+    isCustomerSyncing.value = false;
+    if (run?.status === "COMPLETED") { customerSyncFailed.value = false; customerSyncMessage.value = `Sync complete: ${run.fetchedCount} processed.`; await loadCustomers(1); }
+    else if (run?.status === "FAILED") { customerSyncFailed.value = true; customerSyncMessage.value = run.error || "Customer sync failed."; }
+  } catch (error) { isCustomerSyncing.value = false; customerSyncFailed.value = true; customerSyncMessage.value = error.message; }
+}
+
+async function startCustomerSync() {
+  isCustomerSyncing.value = true;
+  customerSyncMessage.value = "";
+  customerSyncFailed.value = false;
+  try { const response = await authorizedRequest("/api/v1/users/customers/sync", { method: "POST" }); customerSyncMessage.value = response.message; window.setTimeout(() => void pollCustomerSync(), 400); }
+  catch (error) { isCustomerSyncing.value = false; customerSyncFailed.value = true; customerSyncMessage.value = error.message; }
+}
+
+async function viewCustomer(customer) {
+  try { const response = await authorizedRequest(`/api/v1/users/customers/${customer.id}`); selectedCustomer.value = response.customer; isCustomerDetailsOpen.value = true; } catch (error) { customersError.value = error.message; }
+}
+
+async function viewCustomerOrders(customer, after = null, append = false) {
+  if (!append) {
+    selectedCustomer.value = customer;
+    customerOrders.value = [];
+    customerOrdersPageInfo.value = null;
+    customerOrdersError.value = "";
+    isCustomerOrdersOpen.value = true;
+  }
+  isLoadingCustomerOrders.value = true;
+  try {
+    const query = new URLSearchParams({ pageSize: "20" }); if (after) query.set("after", after);
+    const response = await authorizedRequest(`/api/v1/users/customers/${customer.id}/orders?${query}`);
+    customerOrders.value = append ? [...customerOrders.value, ...response.orders] : response.orders;
+    customerOrdersPageInfo.value = response.pageInfo;
+  } catch (error) {
+    customerOrdersError.value = error.message;
+  } finally { isLoadingCustomerOrders.value = false; }
+}
+
+function customerShopifyStateLabel(state) {
+  const normalized = String(state || "").trim();
+  if (!normalized || normalized.toUpperCase() === "NOT_SYNCED") return "Not synced";
+  return normalized.toLowerCase().replace(/(^|[_\s-])\w/g, (match) => match.toUpperCase()).replaceAll("_", " ");
+}
+
+function customerShopifyStateClass(state) {
+  const normalized = String(state || "").trim().toLowerCase();
+  return ["enabled", "invited", "disabled", "declined"].includes(normalized)
+    ? `is-${normalized}`
+    : "is-other";
 }
 
 function formatCustomerSpend(customer) {
@@ -2171,14 +2250,17 @@ function showLogin() {
         </template>
         <template v-else-if="active === 'Customers'">
           <section class="admin-users" aria-labelledby="customers-title">
-            <p id="customers-title" class="admin-users__intro">Customer profiles reconciled from Shopify and website registrations.</p>
-            <div class="admin-users__filters"><label class="admin-users__search"><span><i class="pi pi-search" aria-hidden="true"></i> Search customers</span><input v-model="customerSearch" type="search" placeholder="First name, last name, or email" @input="scheduleCustomerSearch" /></label></div>
+            <div class="admin-customers__heading"><p id="customers-title" class="admin-users__intro">Customer profiles reconciled from Shopify and website registrations.</p><button class="admin-users__invite admin-customers__sync" type="button" :disabled="isCustomerSyncing" @click="startCustomerSync"><i class="pi pi-sync" :class="{ 'pi-spin': isCustomerSyncing }" aria-hidden="true"></i> {{ isCustomerSyncing ? 'Syncing…' : 'Sync Customers' }}</button></div>
+            <div class="admin-users__filters admin-customers__filters"><label class="admin-users__search"><span><i class="pi pi-search" aria-hidden="true"></i> Search customers</span><input v-model="customerSearch" type="search" placeholder="Name, email, or phone" @input="scheduleCustomerSearch" /></label><label><span>Shopify State</span><select v-model="customerShopifyState" @change="loadCustomers(1)"><option value="">All states</option><option value="ENABLED">Enabled</option><option value="INVITED">Invited</option><option value="DISABLED">Disabled</option><option value="DECLINED">Declined</option><option value="NOT_SYNCED">Not synced</option></select></label><label><span>Min Spend (PHP)</span><input v-model="customerMinSpend" type="number" min="0" step="0.01" @change="loadCustomers(1)" /></label><label><span>Max Spend (PHP)</span><input v-model="customerMaxSpend" type="number" min="0" step="0.01" @change="loadCustomers(1)" /></label><button class="admin-users__reset-filters" type="button" @click="resetCustomerFilters"><i class="pi pi-filter-slash" aria-hidden="true"></i> Reset filters</button></div>
+            <p v-if="customerSyncMessage" :class="customerSyncFailed ? 'admin-users__error' : 'admin-users__success'" role="status">{{ customerSyncMessage }}</p>
             <p v-if="customersError" class="admin-users__error" role="alert">{{ customersError }}</p>
             <DataTable :value="customers" :loading="isLoadingCustomers" paginator :rows="customerPagination.pageSize" :totalRecords="customerPagination.total" lazy @page="loadCustomers($event.page + 1)" class="admin-users__table" dataKey="id">
               <template #empty><div class="admin-users__empty">No customers match the search.</div></template><template #loading><div class="admin-users__empty">Loading customers…</div></template>
               <Column field="email" header="Email" style="min-width: 260px" /><Column field="name" header="Name" style="min-width: 190px" /><Column field="phone" header="Phone" style="min-width: 150px" /><Column field="shopifyState" header="Shopify State" style="min-width: 130px" />
-              <Column header="Verified" style="min-width: 105px"><template #body="{ data }"><span class="admin-users__role" :class="data.verifiedEmail ? 'is-active' : 'is-inactive'">{{ data.verifiedEmail ? 'Yes' : 'No' }}</span></template></Column><Column field="orderCount" header="Orders" style="min-width: 90px" /><Column header="Spend" style="min-width: 135px"><template #body="{ data }">{{ formatCustomerSpend(data) }}</template></Column><Column header="Last Sync" style="min-width: 180px"><template #body="{ data }">{{ formatAdminCartDate(data.lastSyncedAt) }}</template></Column>
+              <Column header="Verified" style="min-width: 105px"><template #body="{ data }"><span class="admin-users__role" :class="data.verifiedEmail ? 'is-active' : 'is-inactive'">{{ data.verifiedEmail ? 'Yes' : 'No' }}</span></template></Column><Column field="orderCount" header="Orders" style="min-width: 90px" /><Column header="Spend" style="min-width: 135px"><template #body="{ data }">{{ formatCustomerSpend(data) }}</template></Column><Column header="Last Sync" style="min-width: 180px"><template #body="{ data }">{{ formatAdminCartDate(data.lastSyncedAt) }}</template></Column><Column header="Actions" style="min-width: 220px"><template #body="{ data }"><div class="admin-users__actions admin-customers__actions"><button type="button" title="View more info" @click="viewCustomer(data)"><i class="pi pi-eye" aria-hidden="true"></i> Info</button><button type="button" title="View Shopify orders" @click="viewCustomerOrders(data)"><i class="pi pi-shopping-bag" aria-hidden="true"></i> Orders</button></div></template></Column>
             </DataTable>
+            <Teleport to="body"><Transition name="admin-dialog-fade"><div v-if="isCustomerDetailsOpen" class="admin-product-dialog-backdrop" @click.self="isCustomerDetailsOpen = false"><section class="admin-product-dialog admin-designer-dialog" role="dialog" aria-modal="true"><header><div><p class="admin-eyebrow">Customer profile</p><h2>{{ selectedCustomer?.name }}</h2></div><button type="button" aria-label="Close" @click="isCustomerDetailsOpen = false"><i class="pi pi-times" /></button></header><dl class="admin-designer-dialog__details"><div><dt>Email</dt><dd>{{ selectedCustomer?.email }}</dd></div><div><dt>Phone</dt><dd>{{ selectedCustomer?.phone }}</dd></div><div><dt>Shopify ID</dt><dd>{{ selectedCustomer?.customer?.shopifyId || '--' }}</dd></div><div><dt>State</dt><dd><span class="admin-users__role admin-customer-state" :class="customerShopifyStateClass(selectedCustomer?.shopifyState)">{{ customerShopifyStateLabel(selectedCustomer?.shopifyState) }}</span></dd></div><div><dt>Source</dt><dd>{{ selectedCustomer?.customer?.source }}</dd></div><div><dt>Address</dt><dd>{{ selectedCustomer?.customer?.defaultAddress?.name || selectedCustomer?.customer?.defaultAddress?.address1 || '--' }}</dd></div><div><dt>Tags</dt><dd>{{ selectedCustomer?.customer?.tags?.join(', ') || '--' }}</dd></div></dl></section></div></Transition></Teleport>
+            <Teleport to="body"><Transition name="admin-dialog-fade"><div v-if="isCustomerOrdersOpen" class="admin-product-dialog-backdrop" @click.self="isCustomerOrdersOpen = false"><section class="admin-product-dialog admin-designer-dialog admin-customer-orders-dialog" role="dialog" aria-modal="true"><header><div><p class="admin-eyebrow">Shopify orders</p><h2>{{ selectedCustomer?.name }}</h2></div><button type="button" aria-label="Close" @click="isCustomerOrdersOpen = false"><i class="pi pi-times" /></button></header><div v-if="isLoadingCustomerOrders && !customerOrders.length" class="admin-customer-orders__loading" role="status" aria-live="polite"><i class="pi pi-spinner pi-spin" aria-hidden="true" /><span>Loading orders…</span></div><template v-else><p v-if="customerOrdersError" class="admin-customer-orders__error" role="alert">{{ customerOrdersError }}</p><div v-if="!customerOrdersError || customerOrders.length" class="admin-cart-dialog__items admin-customer-orders__items"><article v-for="order in customerOrders" :key="order.id"><div><strong>{{ order.name }}</strong><small>{{ formatAdminCartDate(order.processedAt) }}</small><small>{{ order.financialStatus }} · {{ order.fulfillmentStatus || 'Unfulfilled' }}</small></div><b>{{ new Intl.NumberFormat('en-PH', { style: 'currency', currency: order.currencyCode }).format(Number(order.total)) }}</b></article><p v-if="!customerOrders.length">No Shopify orders found.</p></div></template><footer v-if="customerOrdersPageInfo?.hasNextPage"><button type="button" :disabled="isLoadingCustomerOrders" @click="viewCustomerOrders(selectedCustomer, customerOrdersPageInfo.endCursor, true)"><i v-if="isLoadingCustomerOrders" class="pi pi-spinner pi-spin" aria-hidden="true" /> {{ isLoadingCustomerOrders ? 'Loading…' : 'Load more orders' }}</button></footer></section></div></Transition></Teleport>
           </section>
         </template>
         <div v-else class="admin-placeholder">Hello World</div>

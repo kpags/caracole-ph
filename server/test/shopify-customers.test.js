@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createShopifyCustomerService } from '../src/lib/shopify-customers.js'
+import { createShopifyCustomerService, normalizeShopifyOrderCount } from '../src/lib/shopify-customers.js'
 
 const config = {
   SHOPIFY_STORE_DOMAIN: 'example.myshopify.com',
@@ -23,4 +23,12 @@ test('uses the Shopify private Storefront token header for customer creation', a
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('normalizes Shopify order counts before Prisma persistence', () => {
+  assert.equal(normalizeShopifyOrderCount('0'), 0)
+  assert.equal(normalizeShopifyOrderCount('12'), 12)
+  assert.equal(normalizeShopifyOrderCount(3.9), 3)
+  assert.equal(normalizeShopifyOrderCount(null), 0)
+  assert.equal(normalizeShopifyOrderCount('unknown'), 0)
 })

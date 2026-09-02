@@ -83,13 +83,17 @@ export function createShopifyCustomerService(config) {
 }
 
 function normalizedEmail(customer) { return customer.defaultEmailAddress?.emailAddress?.trim().toLowerCase() || null }
+export function normalizeShopifyOrderCount(value) {
+  const count = Number(value)
+  return Number.isFinite(count) && count >= 0 ? Math.trunc(count) : 0
+}
 function customerData(customer, now) {
   return {
     shopifyId: customer.id,
     phone: customer.defaultPhoneNumber?.phoneNumber || customer.defaultAddress?.phone || null,
     shopifyState: customer.state || null,
     shopifyVerifiedEmail: customer.verifiedEmail ?? null,
-    orderCount: customer.numberOfOrders || 0,
+    orderCount: normalizeShopifyOrderCount(customer.numberOfOrders),
     amountSpent: customer.amountSpent?.amount ?? null,
     currencyCode: customer.amountSpent?.currencyCode || null,
     tags: customer.tags || [],
@@ -131,6 +135,36 @@ export async function syncShopifyCustomers({ prisma, config, tokenProvider = cre
   counts.removedCount = stale.count
   logger.log(`Shopify customer sync: fetched=${counts.fetchedCount} created=${counts.createdCount} updated=${counts.updatedCount} conflicts=${counts.conflictCount} removed=${counts.removedCount}`)
   return counts
+}
+
+const CUSTOMER_SYNC_LOCK = 841109
+
+export async function runShopifyCustomerSync({ prisma, config, tokenProvider, logger = console }) {
+  const lock = await prisma.$queryRaw`SELECT pg_try_advisory_lock(${CUSTOMER_SYNC_LOCK}) AS acquired`
+  if (!lock[0]?.acquired) return { started: false, reason: 'A Shopify customer sync is already running' }
+  const run = await prisma.customerSyncRun.create({ data: { status: 'RUNNING' } })
+  try {
+    const counts = await syncShopifyCustomers({ prisma, config, tokenProvider, logger })
+    const completed = await prisma.customerSyncRun.update({ where: { id: run.id }, data: { status: 'COMPLETED', finishedAt: new Date(), ...counts } })
+    return { started: true, run: completed }
+  } catch (error) {
+    const failed = await prisma.customerSyncRun.update({ where: { id: run.id }, data: { status: 'FAILED', finishedAt: new Date(), error: error.message } })
+    logger.error?.(`Shopify customer sync failed: ${error.message}`)
+    return { started: true, run: failed }
+  } finally {
+    await prisma.$queryRaw`SELECT pg_advisory_unlock(${CUSTOMER_SYNC_LOCK})`
+  }
+}
+
+export async function getShopifyCustomerOrders({ config, shopifyId, after = null, first = 20, tokenProvider = createShopifyAdminTokenProvider(config) }) {
+  const data = await adminRequest(config, tokenProvider, `query CustomerOrders($id: ID!, $after: String, $first: Int!) {
+    customer(id: $id) { orders(first: $first, after: $after, sortKey: PROCESSED_AT, reverse: true) {
+      pageInfo { hasNextPage endCursor }
+      nodes { id name processedAt displayFinancialStatus displayFulfillmentStatus currentTotalPriceSet { shopMoney { amount currencyCode } } }
+    } }
+  }`, { id: shopifyId, after, first })
+  if (!data.customer) throw new Error('The linked Shopify customer was not found')
+  return data.customer.orders
 }
 
 export async function migrateLocalCustomersToShopify({ prisma, config, tokenProvider = createShopifyAdminTokenProvider(config), logger = console }) {

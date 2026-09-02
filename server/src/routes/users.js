@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { asyncRoute, HttpError } from '../lib/http.js'
 import { designerData, userSelect } from '../lib/users.js'
 import { designerUpdateSchema } from '../lib/validation.js'
+import { getShopifyCustomerOrders, runShopifyCustomerSync } from '../lib/shopify-customers.js'
 
 const adminListQuery = z.object({
   search: z.string().trim().min(1).max(120).optional(),
@@ -14,9 +15,12 @@ const adminListQuery = z.object({
 
 const customerListQuery = z.object({
   search: z.string().trim().min(1).max(120).optional(),
+  shopifyState: z.enum(['ENABLED', 'INVITED', 'DISABLED', 'DECLINED', 'NOT_SYNCED']).optional(),
+  minSpend: z.coerce.number().nonnegative().optional(),
+  maxSpend: z.coerce.number().nonnegative().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(10)
-})
+}).refine((value) => value.minSpend === undefined || value.maxSpend === undefined || value.minSpend <= value.maxSpend, { message: 'Minimum spend cannot exceed maximum spend' })
 
 const reviewSchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED'])
@@ -92,6 +96,10 @@ export function serializeCustomerUser(user) {
     currencyCode: customer?.currencyCode || 'PHP',
     lastSyncedAt: customer?.lastSyncedAt || null
   }
+}
+
+export function serializeCustomerDetail(user) {
+  return { ...serializeCustomerUser(user), createdAt: user.createdAt, updatedAt: user.updatedAt, active: user.isActive, emailVerified: user.isEmailVerified, customer: user.customer ? { id: user.customer.id, shopifyId: user.customer.shopifyId, source: user.customer.source, tags: user.customer.tags, defaultAddress: user.customer.defaultAddress, shopifyCreatedAt: user.customer.shopifyCreatedAt, shopifyUpdatedAt: user.customer.shopifyUpdatedAt } : null }
 }
 
 export function visibleStaffWhere(isSuperuser) {
@@ -180,16 +188,21 @@ export function usersRoutes({ prisma, config, mailer, authenticate, authorize })
 
   router.get('/customers', authorize('staff'), asyncRoute(async (req, res) => {
     const query = customerListQuery.parse(req.query)
+    const customerWhere = {
+      ...(query.shopifyState === 'NOT_SYNCED' ? { shopifyState: null } : query.shopifyState ? { shopifyState: query.shopifyState } : {}),
+      ...(query.minSpend !== undefined || query.maxSpend !== undefined ? { amountSpent: { ...(query.minSpend !== undefined ? { gte: query.minSpend } : {}), ...(query.maxSpend !== undefined ? { lte: query.maxSpend } : {}) } } : {})
+    }
     const where = {
       isDesigner: false,
       isStaff: false,
       isSuperuser: false,
-      customer: { isNot: null },
+      customer: { is: customerWhere },
       ...(query.search ? {
         OR: [
           { email: { contains: query.search, mode: 'insensitive' } },
           { firstName: { contains: query.search, mode: 'insensitive' } },
-          { lastName: { contains: query.search, mode: 'insensitive' } }
+          { lastName: { contains: query.search, mode: 'insensitive' } },
+          { customer: { is: { phone: { contains: query.search, mode: 'insensitive' } } } }
         ]
       } : {})
     }
@@ -198,6 +211,34 @@ export function usersRoutes({ prisma, config, mailer, authenticate, authorize })
       prisma.user.findMany({ where, select: userSelect, orderBy: { createdAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize })
     ])
     res.json({ customers: users.map(serializeCustomerUser), total, page: query.page, pageSize: query.pageSize })
+  }))
+
+  router.get('/customers/sync', authorize('staff'), asyncRoute(async (_req, res) => {
+    const run = await prisma.customerSyncRun.findFirst({ orderBy: { startedAt: 'desc' } })
+    res.json({ run })
+  }))
+
+  router.post('/customers/sync', authorize('staff'), asyncRoute(async (_req, res) => {
+    const active = await prisma.customerSyncRun.findFirst({ where: { status: 'RUNNING' }, orderBy: { startedAt: 'desc' } })
+    if (active) return res.status(202).json({ message: 'Customer sync is already running.', run: active })
+    setImmediate(() => { void runShopifyCustomerSync({ prisma, config }) })
+    res.status(202).json({ message: 'Customer sync started.' })
+  }))
+
+  router.get('/customers/:id', authorize('staff'), asyncRoute(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id)
+    const user = await prisma.user.findFirst({ where: { id, isDesigner: false, isStaff: false, isSuperuser: false, customer: { isNot: null } }, select: userSelect })
+    if (!user) throw new HttpError(404, 'Customer not found')
+    res.json({ customer: serializeCustomerDetail(user) })
+  }))
+
+  router.get('/customers/:id/orders', authorize('staff'), asyncRoute(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id)
+    const query = z.object({ after: z.string().min(1).optional(), pageSize: z.coerce.number().int().min(1).max(50).default(20) }).parse(req.query)
+    const user = await prisma.user.findFirst({ where: { id, isDesigner: false, isStaff: false, isSuperuser: false, customer: { is: { shopifyId: { not: null } } } }, select: userSelect })
+    if (!user?.customer?.shopifyId) throw new HttpError(404, 'This customer is not linked to Shopify')
+    const orders = await getShopifyCustomerOrders({ config, shopifyId: user.customer.shopifyId, after: query.after || null, first: query.pageSize })
+    res.json({ orders: orders.nodes.map((order) => ({ id: order.id, name: order.name, processedAt: order.processedAt, financialStatus: order.displayFinancialStatus, fulfillmentStatus: order.displayFulfillmentStatus, total: order.currentTotalPriceSet?.shopMoney?.amount || '0', currencyCode: order.currentTotalPriceSet?.shopMoney?.currencyCode || 'PHP' })), pageInfo: orders.pageInfo })
   }))
 
   router.patch('/designers/:id/review', authorize('staff'), asyncRoute(async (req, res) => {
