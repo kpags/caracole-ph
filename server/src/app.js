@@ -54,7 +54,7 @@ export function createApp({ prisma, config, auth, mailer, storage, products }) {
   app.use('/api/v1/products', productsRoutes({ prisma }))
   app.use('/api/v1/carts', cartsRoutes({ prisma, authenticate, authorize }))
   app.use('/api/v1/newsletter', newsletterRoutes({ prisma, mailer, config, authenticate, authorize }))
-  app.use('/api/v1/inquiries', inquiriesRoutes({ prisma, mailer, config }))
+  app.use('/api/v1/inquiries', inquiriesRoutes({ prisma, mailer, config, authenticate, authorize }))
   app.use((_req, _res, next) => next(new HttpError(404, 'Route not found')))
   app.use(errorHandler)
   return app

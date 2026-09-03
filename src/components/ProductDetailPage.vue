@@ -224,7 +224,8 @@ async function submitInquiry() {
         contactNumber: inquiryForm.contactNumber,
         inquiry: inquiryForm.inquiry,
         productName: props.product.name,
-        edpNumber: props.product.edpNumber || undefined
+        edpNumber: props.product.edpNumber || undefined,
+        articleNumber: props.product.articleNumber || undefined
       })
     })
     const body = await response.json().catch(() => ({}))

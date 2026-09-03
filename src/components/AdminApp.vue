@@ -160,6 +160,14 @@ const newsletterSubscribers = ref([]);
 const newsletterPagination = ref({ page: 1, limit: 10, totalItems: 0, totalPages: 0 });
 const isLoadingNewsletterSubscribers = ref(false);
 const newsletterSubscribersError = ref("");
+const adminInquiries = ref([]);
+const adminInquiryFilters = ref({ search: "", dateFrom: "", dateTo: "" });
+const adminInquiryPagination = ref({ page: 1, limit: 10, totalItems: 0, totalPages: 0 });
+const isLoadingAdminInquiries = ref(false);
+const adminInquiriesError = ref("");
+const selectedAdminInquiry = ref(null);
+const isAdminInquiryDetailsOpen = ref(false);
+const adminInquiryDialog = ref(null);
 const designers = ref([]);
 const designerStatusFilter = ref("");
 const isLoadingDesigners = ref(false);
@@ -189,6 +197,7 @@ let adminProductSearchTimer = null;
 let adminCartSearchTimer = null;
 let adminUserSearchTimer = null;
 let customerSearchTimer = null;
+let adminInquirySearchTimer = null;
 
 const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((position) => ({
   position,
@@ -196,7 +205,7 @@ const shopTheLookSlots = computed(() => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((posi
 })));
 const shopTheLookPreview = computed(() => shopTheLookPreviewUrl.value || shopTheLookExistingImageUrl.value);
 const shopTheLookDescriptionLength = computed(() => getShopTheLookDescriptionText(shopTheLookDescription.value).length);
-const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value || isAdminProductDetailsOpen.value || isAdminCartDetailsOpen.value || isDesignerDetailsOpen.value || isDesignerReviewOpen.value || isInviteUserOpen.value);
+const isAdminModalOpen = computed(() => isShopTheLookEditorOpen.value || isShopTheLookDeleteConfirmationOpen.value || isDeleteConfirmationOpen.value || isAdminProductDetailsOpen.value || isAdminCartDetailsOpen.value || isAdminInquiryDetailsOpen.value || isDesignerDetailsOpen.value || isDesignerReviewOpen.value || isInviteUserOpen.value);
 const assignedProduct = (hotspot) => shopTheLookProductCache.value[hotspot.productId]
   || shopTheLookProducts.value.find((product) => (product.recordId || product.id) === hotspot.productId)
   || null;
@@ -317,6 +326,7 @@ function select(item) {
   if (["Registered Carts", "Guest Carts"].includes(item)) expanded.value.Carts = true;
   if (item === "Products") void loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
   if (["Registered Carts", "Guest Carts"].includes(item)) void loadAdminCarts({ page: 1 });
+  if (["General", "Product"].includes(item)) void loadAdminInquiries({ page: 1 });
   if (item === "Admin") void loadAdminUsers();
   if (item === "Customers") void loadCustomers(1);
   if (item === "Newsletter") void loadNewsletterSubscribers({ page: 1 });
@@ -465,7 +475,9 @@ onBeforeUnmount(() => {
   if (shopTheLookPreviewUrl.value) URL.revokeObjectURL(shopTheLookPreviewUrl.value);
   if (shopTheLookToastTimer) window.clearTimeout(shopTheLookToastTimer);
   if (adminProductSearchTimer) window.clearTimeout(adminProductSearchTimer);
+  if (adminCartSearchTimer) window.clearTimeout(adminCartSearchTimer);
   if (adminUserSearchTimer) window.clearTimeout(adminUserSearchTimer);
+  if (adminInquirySearchTimer) window.clearTimeout(adminInquirySearchTimer);
   document.body.classList.remove("modal-scroll-lock");
   document.body.classList.remove("admin-sidebar-open");
   window.removeEventListener("keydown", handleAdminKeydown);
@@ -706,6 +718,55 @@ async function openAdminCartDetails(cart) {
 function formatAdminCartDate(value) {
   if (!value) return "--";
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function activeInquiryType() {
+  return active.value === "Product" ? "product" : "general";
+}
+
+function buildAdminInquiriesQuery(page) {
+  const query = new URLSearchParams({ page: String(page), limit: "10", type: activeInquiryType() });
+  if (adminInquiryFilters.value.search.trim()) query.set("search", adminInquiryFilters.value.search.trim());
+  if (adminInquiryFilters.value.dateFrom) query.set("dateFrom", adminInquiryFilters.value.dateFrom);
+  if (adminInquiryFilters.value.dateTo) query.set("dateTo", adminInquiryFilters.value.dateTo);
+  return query;
+}
+
+async function loadAdminInquiries({ page = adminInquiryPagination.value.page } = {}) {
+  if (!["General", "Product"].includes(active.value)) return;
+  isLoadingAdminInquiries.value = true;
+  adminInquiriesError.value = "";
+  try {
+    const response = await authorizedRequest(`/api/v1/inquiries?${buildAdminInquiriesQuery(page)}`);
+    adminInquiries.value = response.inquiries || [];
+    adminInquiryPagination.value = response.pagination;
+  } catch (error) {
+    adminInquiriesError.value = error.message;
+    adminInquiries.value = [];
+  } finally {
+    isLoadingAdminInquiries.value = false;
+  }
+}
+
+function scheduleAdminInquirySearch() {
+  if (adminInquirySearchTimer) window.clearTimeout(adminInquirySearchTimer);
+  adminInquirySearchTimer = window.setTimeout(() => void loadAdminInquiries({ page: 1 }), 300);
+}
+
+function resetAdminInquiryFilters() {
+  adminInquiryFilters.value = { search: "", dateFrom: "", dateTo: "" };
+  void loadAdminInquiries({ page: 1 });
+}
+
+async function openAdminInquiryDetails(inquiry) {
+  adminInquiriesError.value = "";
+  try {
+    const response = await authorizedRequest(`/api/v1/inquiries/${inquiry.id}`);
+    selectedAdminInquiry.value = response.inquiry;
+    isAdminInquiryDetailsOpen.value = true;
+  } catch (error) {
+    adminInquiriesError.value = error.message;
+  }
 }
 
 function formatAdminCartPrice(cart) {
@@ -1341,6 +1402,7 @@ function clearStoredAdminSession() {
 async function loadRestoredAdminPage() {
   if (active.value === "Products") await loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
   if (["Registered Carts", "Guest Carts"].includes(active.value)) await loadAdminCarts({ page: 1 });
+  if (["General", "Product"].includes(active.value)) await loadAdminInquiries({ page: 1 });
   if (active.value === "Admin") await loadAdminUsers();
   if (active.value === "Customers") await loadCustomers(1);
   if (active.value === "Newsletter") await loadNewsletterSubscribers({ page: 1 });
@@ -1705,7 +1767,7 @@ function showLogin() {
     </aside>
 
     <main class="admin-main">
-      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Guest Carts'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers', 'Newsletter'].includes(active) }">
+      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Guest Carts', 'General', 'Product'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers', 'Newsletter'].includes(active) }">
         <h1>{{ adminTopbarTitle }}</h1>
         <template v-if="active === 'Hero Banners'">
           <Transition name="admin-editor-slide">
@@ -2193,6 +2255,52 @@ function showLogin() {
                   <header><div><p class="admin-eyebrow">{{ selectedAdminCart?.email ? 'Registered cart' : 'Session cart' }}</p><h2 id="admin-cart-dialog-title">{{ selectedAdminCart?.email || selectedAdminCart?.sessionId }}</h2></div><button type="button" aria-label="Close cart details" @click="isAdminCartDetailsOpen = false"><i class="pi pi-times" aria-hidden="true"></i></button></header>
                   <dl class="admin-cart-dialog__summary"><div><dt>Created</dt><dd>{{ formatAdminCartDate(selectedAdminCart?.createdAt) }}</dd></div><div><dt>Last Updated</dt><dd>{{ formatAdminCartDate(selectedAdminCart?.updatedAt) }}</dd></div><div v-if="selectedAdminCart?.email"><dt>Customer</dt><dd>{{ selectedAdminCart?.name }}</dd></div><div><dt>Status</dt><dd><span class="admin-users__role" :class="adminCartStatusClass(selectedAdminCart?.status)">{{ selectedAdminCart?.status }}</span></dd></div><div><dt>Cart Total</dt><dd>{{ formatAdminCartPrice(selectedAdminCart) }}</dd></div></dl>
                   <section class="admin-cart-dialog__items" aria-labelledby="admin-cart-items-title"><h3 id="admin-cart-items-title">Cart Items <small>{{ selectedAdminCart?.itemCount || 0 }}</small></h3><article v-for="item in selectedAdminCart?.items || []" :key="item.id"><img v-if="item.image" :src="item.image" :alt="item.name" /><span v-else class="admin-cart-dialog__image-placeholder"><i class="pi pi-image" aria-hidden="true"></i></span><div><strong>{{ item.name }}</strong><small v-if="item.edpNumber && item.edpNumber !== '--'">EDP: {{ item.edpNumber }}</small><small>Quantity: {{ item.quantity }}</small></div><b>{{ formatAdminCartPrice({ totalPrice: item.totalPrice, currencyCode: selectedAdminCart?.currencyCode }) }}</b></article></section>
+                </section>
+              </div>
+            </Transition>
+          </Teleport>
+        </template>
+        <template v-else-if="['General', 'Product'].includes(active)">
+          <section class="admin-carts admin-inquiries" aria-labelledby="admin-inquiries-title">
+            <p id="admin-inquiries-title" class="admin-carts__intro">{{ active === 'Product' ? 'Product-specific inquiries submitted from product pages.' : 'General inquiries submitted through the Contact Us form.' }}</p>
+            <div class="admin-carts__filters admin-inquiries__filters" aria-label="Inquiry filters">
+              <label class="admin-carts__search"><span><i class="pi pi-search" aria-hidden="true"></i> Search {{ active === 'Product' ? 'product inquiries' : 'general inquiries' }}</span><input v-model="adminInquiryFilters.search" type="search" :placeholder="active === 'Product' ? 'Email, name, contact, product, EDP, or article number' : 'Email, first name, last name, or contact number'" @input="scheduleAdminInquirySearch" /></label>
+              <label><span>Date from</span><input v-model="adminInquiryFilters.dateFrom" type="date" @change="loadAdminInquiries({ page: 1 })" /></label>
+              <label><span>Date to</span><input v-model="adminInquiryFilters.dateTo" type="date" :min="adminInquiryFilters.dateFrom || undefined" @change="loadAdminInquiries({ page: 1 })" /></label>
+              <button type="button" @click="resetAdminInquiryFilters"><i class="pi pi-filter-slash" aria-hidden="true"></i> Reset filters</button>
+            </div>
+            <p v-if="adminInquiriesError" class="admin-carts__error" role="alert">{{ adminInquiriesError }}</p>
+            <DataTable
+              :value="adminInquiries"
+              :loading="isLoadingAdminInquiries"
+              :lazy="true"
+              paginator
+              :rows="10"
+              :first="(adminInquiryPagination.page - 1) * 10"
+              :totalRecords="adminInquiryPagination.totalItems"
+              :rowsPerPageOptions="[]"
+              class="admin-carts__table admin-inquiries__table"
+              dataKey="id"
+              @page="loadAdminInquiries({ page: $event.page + 1 })"
+            >
+              <template #empty><div class="admin-carts__empty">No {{ active === 'Product' ? 'product' : 'general' }} inquiries match the selected filters.</div></template>
+              <template #loading><div class="admin-carts__empty">Loading inquiries…</div></template>
+              <Column header="Date Inquired" style="min-width: 175px"><template #body="{ data }">{{ formatAdminCartDate(data.createdAt) }}</template></Column>
+              <Column field="email" header="Email" style="min-width: 240px" />
+              <Column header="Name" style="min-width: 190px"><template #body="{ data }">{{ data.firstName }} {{ data.lastName }}</template></Column>
+              <Column field="contactNumber" header="Contact Number" style="min-width: 170px" />
+              <Column v-if="active === 'Product'" header="Product" style="min-width: 245px"><template #body="{ data }"><div class="admin-inquiry-product"><strong>{{ data.productName }}</strong><small v-if="data.edpNumber">EDP: {{ data.edpNumber }}</small><small v-if="data.articleNumber">Article: {{ data.articleNumber }}</small></div></template></Column>
+              <Column header="Actions" style="width: 130px"><template #body="{ data }"><button class="admin-inquiry-action" type="button" :aria-label="`View inquiry from ${data.firstName} ${data.lastName}`" @click="openAdminInquiryDetails(data)"><i class="pi pi-eye" aria-hidden="true"></i> View inquiry</button></template></Column>
+            </DataTable>
+          </section>
+
+          <Teleport to="body">
+            <Transition name="admin-dialog-fade">
+              <div v-if="isAdminInquiryDetailsOpen" class="admin-product-dialog-backdrop" role="presentation" @click.self="isAdminInquiryDetailsOpen = false">
+                <section ref="adminInquiryDialog" class="admin-product-dialog admin-inquiry-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-inquiry-dialog-title" tabindex="-1" @keydown="trapAdminDialogFocus($event, adminInquiryDialog)">
+                  <header><div><p class="admin-eyebrow">{{ selectedAdminInquiry?.productName ? 'Product Inquiry' : 'General Inquiry' }}</p><h2 id="admin-inquiry-dialog-title">{{ selectedAdminInquiry?.firstName }} {{ selectedAdminInquiry?.lastName }}</h2></div><button type="button" aria-label="Close inquiry" @click="isAdminInquiryDetailsOpen = false"><i class="pi pi-times" aria-hidden="true"></i></button></header>
+                  <dl class="admin-inquiry-dialog__details"><div><dt>Date Inquired</dt><dd>{{ formatAdminCartDate(selectedAdminInquiry?.createdAt) }}</dd></div><div><dt>Email</dt><dd><a :href="`mailto:${selectedAdminInquiry?.email || ''}`">{{ selectedAdminInquiry?.email }}</a></dd></div><div><dt>Full Name</dt><dd>{{ selectedAdminInquiry?.firstName }} {{ selectedAdminInquiry?.lastName }}</dd></div><div><dt>Contact Number</dt><dd>{{ selectedAdminInquiry?.contactNumber }}</dd></div><template v-if="selectedAdminInquiry?.productName"><div><dt>Product</dt><dd>{{ selectedAdminInquiry.productName }}</dd></div><div><dt>EDP Number</dt><dd>{{ selectedAdminInquiry.edpNumber || '--' }}</dd></div><div><dt>Article Number</dt><dd>{{ selectedAdminInquiry.articleNumber || '--' }}</dd></div></template></dl>
+                  <section class="admin-inquiry-dialog__message" aria-labelledby="admin-inquiry-message-title"><h3 id="admin-inquiry-message-title">Inquiry</h3><p>{{ selectedAdminInquiry?.inquiry }}</p></section>
                 </section>
               </div>
             </Transition>

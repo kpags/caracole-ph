@@ -63,6 +63,7 @@ function inquiryTemplateContext(inquiry, appConfig) {
     inquiry: inquiry.message,
     productName: inquiry.productName,
     edpNumber: inquiry.edpNumber,
+    articleNumber: inquiry.articleNumber,
     status: inquiry.status,
     inquiredAt: new Intl.DateTimeFormat('en-PH', {
       dateStyle: 'long',
@@ -128,7 +129,7 @@ export function createMailer(config) {
     async sendInquiryConfirmation({ inquiry, config: appConfig }) {
       const render = await loadTemplate('inquiry-confirmation')
       const context = inquiryTemplateContext(inquiry, appConfig)
-      const productDetails = context.productName ? ` regarding ${context.productName}${context.edpNumber ? ` (EDP ${context.edpNumber})` : ''}` : ''
+      const productDetails = context.productName ? ` regarding ${context.productName}${context.edpNumber ? ` (EDP ${context.edpNumber})` : ''}${context.articleNumber ? ` (Article ${context.articleNumber})` : ''}` : ''
       await transporter.sendMail({
         from: appConfig.EMAIL_FROM,
         to: inquiry.email,

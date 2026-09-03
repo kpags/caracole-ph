@@ -130,10 +130,14 @@ model Inquiry {
   message       String        @db.Text
   productName   String?       @map("product_name") @db.VarChar(255)
   edpNumber     String?       @map("edp_number") @db.VarChar(120)
+  articleNumber String?       @map("article_number") @db.VarChar(120)
   status        InquiryStatus @default(PENDING)
 
   @@index([status, createdAt])
   @@index([email])
+  @@index([productName, createdAt])
+  @@index([edpNumber, createdAt])
+  @@index([articleNumber, createdAt])
   @@map("inquiries")
 }
 
