@@ -223,6 +223,47 @@ model ShopTheLookEnvironment {
   @@map("shop_the_look_environments")
 }
 
+model ShowroomBranch {
+  id             String             @id @default(uuid()) @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  name           String             @unique @db.VarChar(160)
+  slug           String             @unique @db.VarChar(180)
+  address        String             @db.VarChar(500)
+  contactNumbers String[]           @default([]) @map("contact_numbers")
+  position       Int                @unique
+  images         ShowroomImage[]
+  schedules      ShowroomSchedule[]
+
+  @@index([position])
+  @@map("showroom_branches")
+}
+
+model ShowroomImage {
+  id        String         @id @default(uuid()) @db.Uuid
+  branchId  String         @map("branch_id") @db.Uuid
+  imageUrl  String         @map("image_url")
+  position  Int
+  branch    ShowroomBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, position])
+  @@map("showroom_images")
+}
+
+model ShowroomSchedule {
+  id       String         @id @default(uuid()) @db.Uuid
+  branchId String         @map("branch_id") @db.Uuid
+  dayStart Int            @map("day_start")
+  dayEnd   Int            @map("day_end")
+  timeOpen String         @map("time_open") @db.VarChar(5)
+  timeClose String        @map("time_close") @db.VarChar(5)
+  position Int
+  branch   ShowroomBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, position])
+  @@map("showroom_schedules")
+}
+
 model MainCategoryDisplay {
   id        String   @id @default(uuid()) @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

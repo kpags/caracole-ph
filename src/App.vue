@@ -450,10 +450,8 @@ async function loadShopTheLookEnvironments() {
   }
 }
 
-const locations = [
+const fallbackLocations = [
   {
-    label: "Flagship Showroom",
-    branch: "Greenhills",
     name: "GH Mall, San Juan",
     address: "4F GH Mall, Ortigas Avenue, San Juan City, Philippines",
     hours: ["Mon–Thu · 10:00 AM–9:00 PM", "Fri–Sun · 10:00 AM–10:00 PM"],
@@ -465,8 +463,6 @@ const locations = [
     ],
   },
   {
-    label: "Design Center",
-    branch: "Quezon City",
     name: "Manresa, Quezon City",
     address:
       "157 Sgt. E. Rivera Street, Brgy. Manresa, Quezon City, Philippines",
@@ -480,6 +476,43 @@ const locations = [
   },
 ];
 
+const locations = ref(fallbackLocations.map((location) => ({ ...location, images: [...location.images], hours: [...location.hours] })));
+
+function formatShowroomTime(value) {
+  const [hours, minutes] = String(value || '').split(':').map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return value;
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${String(minutes).padStart(2, '0')} ${suffix}`;
+}
+
+function showroomBranchToLocation(branch) {
+  return {
+    branch: branch.name,
+    name: branch.name,
+    address: branch.address,
+    hours: (branch.schedules || []).map((schedule) => `${schedule.dayStartLabel}${schedule.dayStart === schedule.dayEnd ? '' : `–${schedule.dayEndLabel}`} · ${formatShowroomTime(schedule.timeOpen)}–${formatShowroomTime(schedule.timeClose)}`),
+    phones: (branch.contactNumbers || []).join(' · '),
+    images: (branch.images || []).map((image) => image.imageUrl),
+  };
+}
+
+async function loadShowrooms() {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/showrooms/public`);
+    if (!response.ok) throw new Error('Showrooms are unavailable');
+    const payload = await response.json();
+    const loadedLocations = (payload.branches || []).map(showroomBranchToLocation).filter((location) => location.images.length);
+    if (!loadedLocations.length) return;
+    locationTimers.forEach((timer) => window.clearInterval(timer));
+    locationTimers.clear();
+    locations.value = loadedLocations;
+    locationImageIndexes.value = loadedLocations.map(() => 0);
+  } catch (error) {
+    console.warn('Unable to load showrooms', error);
+  }
+}
+
 const currentVideo = ref(0);
 const videoEl = ref(null);
 const videoProgress = ref(0);
@@ -490,7 +523,7 @@ const isSubmittingNewsletter = ref(false);
 const newsletterToast = ref(null);
 const email = ref("");
 let newsletterToastTimer = null;
-const locationImageIndexes = ref(locations.map(() => 0));
+const locationImageIndexes = ref(locations.value.map(() => 0));
 const locationTimers = new Map();
 const lookMediaViewport = ref(null);
 const lookImageDimensions = ref({ width: 1920, height: 1080 });
@@ -817,14 +850,14 @@ function showNewsletterToast(message, type) {
 }
 
 function startLocationCarousel(index) {
-  if (locationTimers.has(index) || locations[index].images.length < 2) return;
+  if (locationTimers.has(index) || locations.value[index]?.images.length < 2) return;
 
   locationTimers.set(
     index,
     window.setInterval(() => {
       locationImageIndexes.value[index] =
         (locationImageIndexes.value[index] + 1) %
-        locations[index].images.length;
+        locations.value[index]?.images.length || 1;
     }, 1500),
   );
 }
@@ -833,7 +866,7 @@ function stopLocationCarousel(index) {
   const timer = locationTimers.get(index);
   if (timer) window.clearInterval(timer);
   locationTimers.delete(index);
-  locationImageIndexes.value[index] = 0;
+  if (locationImageIndexes.value[index] !== undefined) locationImageIndexes.value[index] = 0;
 }
 
 function handleLocationFocusOut(index, event) {
@@ -1333,6 +1366,7 @@ onMounted(() => {
   if (productRouteMatch) void loadProductByHandle(decodeURIComponent(productRouteMatch[1])).catch(() => {});
   void loadHeroBanners();
   void loadShopTheLookEnvironments();
+  void loadShowrooms();
   void loadContentDisplays();
   try {
     const customerTokens = JSON.parse(sessionStorage.getItem(CUSTOMER_AUTH_STORAGE_KEY) || "null");
@@ -1666,8 +1700,7 @@ onBeforeUnmount(() => {
               ><span>Branch</span
               ><select v-model="appointmentForm.branch" required>
                 <option value="" disabled>Select showroom</option>
-                <option>Greenhills</option>
-                <option>Quezon City</option>
+                <option v-for="location in locations" :key="location.branch" :value="location.branch">{{ location.branch }}</option>
               </select></label
             ><label
               ><span>Appointment date</span
@@ -2623,7 +2656,6 @@ onBeforeUnmount(() => {
                 }"
                 loading="lazy"
               />
-              <span>{{ location.label }}</span>
               <div class="location-card__progress" aria-hidden="true">
                 <i
                   v-for="(_, imageIndex) in location.images"

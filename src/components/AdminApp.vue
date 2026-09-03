@@ -6,6 +6,7 @@ import Column from "primevue/column";
 import Quill from "quill";
 import "quill/dist/quill.snow.css";
 import AdminContentManager from "./AdminContentManager.vue";
+import AdminShowroomManager from "./AdminShowroomManager.vue";
 
 const ADMIN_VIEW_STORAGE_KEY = "caracole-admin-view";
 const isAdminInvitationSetup = /^\/admin\/setup-password\/?$/.test(window.location.pathname);
@@ -15,6 +16,7 @@ const contentSectionIds = {
   "Shop the Look": "shop-the-look",
   "Main Categories Display": "main-categories-display",
   "Content Designers": "content-designers",
+  "Showroom Display": "showroom-display",
 };
 const storedAdminView = getStoredAdminView();
 const active = ref(storedAdminView.active);
@@ -39,6 +41,7 @@ const orderedGroups = [
     { key: "Shop the Look", label: "Shop the Look" },
     { key: "Main Categories Display", label: "Main Categories Display" },
     { key: "Content Designers", label: "Designers" },
+    { key: "Showroom Display", label: "Showroom Display" },
   ] },
   { title: "Products", icon: "pi pi-list", items: [] },
   {
@@ -264,7 +267,7 @@ function getStoredAdminView() {
   const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Carts: false, Users: false, Inquiries: false } };
   try {
     const value = JSON.parse(sessionStorage.getItem(ADMIN_VIEW_STORAGE_KEY) || "null");
-    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Products", "Registered Carts", "Guest Carts", "Appointments", "General", "Product", "Newsletter", "Admin", "Registered Designers", "Customers"];
+    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display", "Products", "Registered Carts", "Guest Carts", "Appointments", "General", "Product", "Newsletter", "Admin", "Registered Designers", "Customers"];
     if (value?.active === "Designers") value.active = "Registered Designers";
     if (value?.activeContentLink === "Designers") value.activeContentLink = "Registered Designers";
     if (value?.active === "Session Carts") value.active = "Guest Carts";
@@ -321,7 +324,7 @@ function select(item) {
   }
   active.value = item;
   activeContentLink.value = item;
-  if (["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers"].includes(item)) expanded.value.Contents = true;
+  if (["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display"].includes(item)) expanded.value.Contents = true;
   if (["Admin", "Registered Designers", "Customers"].includes(item)) expanded.value.Users = true;
   if (["Registered Carts", "Guest Carts"].includes(item)) expanded.value.Carts = true;
   if (item === "Products") void loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
@@ -1953,6 +1956,7 @@ function showLogin() {
 
           <AdminContentManager section="main-categories" section-id="main-categories-display" :authorized-request="authorizedRequest" />
           <AdminContentManager section="designer-profiles" section-id="content-designers" :authorized-request="authorizedRequest" />
+          <AdminShowroomManager :authorized-request="authorizedRequest" />
 
           <Teleport to="body">
             <Transition name="admin-dialog-fade">
