@@ -20,6 +20,8 @@ export const config = z.object({
   SMTP_USER: z.string().min(1),
   SMTP_PASSWORD: z.string().min(1),
   EMAIL_FROM: z.string().min(3),
+  INQUIRY_RECEIVERS: z.string().default(''),
+  DESIGNER_REGISTRATION_RECEIVERS: z.string().default(''),
   ADMIN_DASHBOARD_URL: z.string().url().default('http://localhost:5173/admin'),
   ADMIN_INVITATION_SETUP_URL: z.string().url().default('http://localhost:8080/admin/setup-password'),
   ADMIN_INVITATION_EXPIRES_IN: z.string().min(1).default('7d'),

@@ -546,6 +546,8 @@ const designerForm = reactive({
 });
 const serviceModal = ref(null);
 const serviceSubmitted = ref(false);
+const isSubmittingContact = ref(false);
+const contactError = ref("");
 const contactForm = reactive({
   firstName: "",
   lastName: "",
@@ -1116,6 +1118,7 @@ function openServiceModal(type, branch = "") {
   closeDesigner();
   closeSearch();
   serviceSubmitted.value = false;
+  contactError.value = "";
   serviceModal.value = type;
   prefillGuestForm(type === "contact" ? contactForm : appointmentForm);
   if (type === "appointment" && branch) appointmentForm.branch = branch;
@@ -1124,6 +1127,7 @@ function openServiceModal(type, branch = "") {
 function closeServiceModal() {
   serviceModal.value = null;
   serviceSubmitted.value = false;
+  contactError.value = "";
 }
 
 function saveLocalSubmission(key, submission) {
@@ -1136,12 +1140,29 @@ function saveLocalSubmission(key, submission) {
   }
 }
 
-function submitContact() {
-  saveLocalSubmission("caracole-contact-inquiries", {
-    ...contactForm,
-    submittedAt: new Date().toISOString(),
-  });
-  serviceSubmitted.value = true;
+async function submitContact() {
+  contactError.value = "";
+  isSubmittingContact.value = true;
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/inquiries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        firstName: contactForm.firstName,
+        lastName: contactForm.lastName,
+        email: contactForm.email,
+        contactNumber: contactForm.contactNumber,
+        inquiry: contactForm.inquiry,
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.message || "We could not submit your inquiry. Please try again.");
+    serviceSubmitted.value = true;
+  } catch (error) {
+    contactError.value = error.message || "We could not submit your inquiry. Please try again.";
+  } finally {
+    isSubmittingContact.value = false;
+  }
 }
 
 function submitAppointment() {
@@ -1542,7 +1563,7 @@ onBeforeUnmount(() => {
         <p>
           {{
             serviceModal === "contact"
-              ? "A Caracole PH specialist will respond to your inquiry shortly."
+              ? "Caracole PH team will respond to your inquiry shortly."
               : "Our showroom team will contact you to confirm your appointment."
           }}
         </p>
@@ -1596,12 +1617,10 @@ onBeforeUnmount(() => {
                 v-model="contactForm.captchaConfirmed"
                 type="checkbox"
                 required
-              /><span
-                ><b>I'm not a robot</b
-                ><small>Prototype verification</small></span
-              ><i aria-hidden="true">✓</i></label
-            ><button type="submit">Submit</button>
+              /><span><b>I'm not a robot</b></span></label
+            ><button type="submit" :disabled="isSubmittingContact">{{ isSubmittingContact ? "Submitting…" : "Submit" }}</button>
           </div>
+          <p v-if="contactError" class="service-form__error" role="alert">{{ contactError }}</p>
         </form>
       </template>
       <template v-else>
@@ -1668,10 +1687,7 @@ onBeforeUnmount(() => {
                 v-model="appointmentForm.captchaConfirmed"
                 type="checkbox"
                 required
-              /><span
-                ><b>I'm not a robot</b
-                ><small>Prototype verification</small></span
-              ><i aria-hidden="true">✓</i></label
+              /><span><b>I'm not a robot</b></span></label
             ><button type="submit">Set appointment</button>
           </div>
         </form>
@@ -1841,10 +1857,7 @@ onBeforeUnmount(() => {
               v-model="designerForm.captchaConfirmed"
               type="checkbox"
                 :aria-invalid="designerFieldErrors.captchaConfirmed ? 'true' : undefined"
-              /><span
-                ><b>I'm not a robot</b
-                ><small>Prototype verification</small></span
-              ><i aria-hidden="true">✓</i></label
+              /><span><b>I'm not a robot</b></span></label
             >
             <button class="designer-submit" type="submit" :disabled="isSubmittingDesigner">
               {{ isSubmittingDesigner ? "Registering…" : "Register" }} <span>→</span>
@@ -2671,7 +2684,7 @@ onBeforeUnmount(() => {
       <p v-if="isLoadingShopTheLook" class="shop-the-look-page__status">Loading environments…</p>
       <p v-else-if="!shopTheLookEnvironments.length" class="shop-the-look-page__status">No environments are available yet.</p>
     </main>
-    <ProductDetailPage v-else-if="isProductPage && selectedProduct" :product="selectedProduct" />
+    <ProductDetailPage v-else-if="isProductPage && selectedProduct" :product="selectedProduct" :api-base-url="apiBaseUrl" />
     <main v-else-if="isProductPage" id="main" class="catalog-page"><section class="catalog-empty"><p class="eyebrow">{{ catalogStatus === 'error' ? 'Catalog unavailable' : 'Loading product' }}</p><h2>{{ catalogStatus === 'error' ? 'We couldn’t load this product.' : 'Gathering the details.' }}</h2><p v-if="catalogStatus === 'error'">{{ catalogError }}</p><button v-if="catalogStatus === 'error'" type="button" @click="loadCatalog({ force: true }).catch(() => {})">Try again</button></section></main>
     <CartPage v-else-if="isCartPage" />
     <CheckoutPage v-else-if="isCheckoutPage" />

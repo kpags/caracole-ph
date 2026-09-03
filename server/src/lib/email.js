@@ -52,6 +52,26 @@ function adminInvitationTemplateContext(invitedUser, token, appConfig) {
   }
 }
 
+function inquiryTemplateContext(inquiry, appConfig) {
+  return {
+    appName: appConfig.APP_NAME,
+    firstName: inquiry.firstName,
+    lastName: inquiry.lastName,
+    fullName: [inquiry.firstName, inquiry.lastName].filter(Boolean).join(' '),
+    email: inquiry.email,
+    contactNumber: inquiry.contactNumber,
+    inquiry: inquiry.message,
+    productName: inquiry.productName,
+    edpNumber: inquiry.edpNumber,
+    status: inquiry.status,
+    inquiredAt: new Intl.DateTimeFormat('en-PH', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      timeZone: 'Asia/Manila'
+    }).format(new Date(inquiry.createdAt))
+  }
+}
+
 export function createMailer(config) {
   const transporter = nodemailer.createTransport({
     host: config.SMTP_HOST,
@@ -103,6 +123,30 @@ export function createMailer(config) {
         subject: 'Thank You for Subscribing to our Newsletter',
         html: render({ appName: appConfig.APP_NAME }),
         text: `Thank you for subscribing to ${appConfig.APP_NAME}. You will now receive promotions, events, and announcements from Caracole Philippines.`
+      })
+    },
+    async sendInquiryConfirmation({ inquiry, config: appConfig }) {
+      const render = await loadTemplate('inquiry-confirmation')
+      const context = inquiryTemplateContext(inquiry, appConfig)
+      const productDetails = context.productName ? ` regarding ${context.productName}${context.edpNumber ? ` (EDP ${context.edpNumber})` : ''}` : ''
+      await transporter.sendMail({
+        from: appConfig.EMAIL_FROM,
+        to: inquiry.email,
+        subject: `We've received your inquiry — ${appConfig.APP_NAME}`,
+        html: render(context),
+        text: `Hello ${context.firstName}, thank you for contacting ${appConfig.APP_NAME}. Your inquiry${productDetails} has been received and is being reviewed by the Caracole PH team.`
+      })
+    },
+    async sendInquiryNotification({ inquiry, recipients, config: appConfig }) {
+      if (!recipients.length) return
+      const render = await loadTemplate('inquiry-notification')
+      const context = inquiryTemplateContext(inquiry, appConfig)
+      await transporter.sendMail({
+        from: appConfig.EMAIL_FROM,
+        to: recipients,
+        subject: `New Inquiry — ${context.fullName}`,
+        html: render(context),
+        text: `A new inquiry is awaiting review. Status: ${context.status}. Name: ${context.fullName}; email: ${context.email}; contact number: ${context.contactNumber}; inquiry: ${context.inquiry}; date inquired: ${context.inquiredAt} (PHT).`
       })
     },
     async sendDesignerReviewDecision({ designer, status, config: appConfig }) {

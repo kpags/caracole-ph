@@ -37,7 +37,10 @@ function serializeAuthenticatedUser(user) {
 }
 
 export function designerRegistrationNotificationRecipients(config) {
-  return [config.SMTP_USER]
+  return [...new Set(String(config.DESIGNER_REGISTRATION_RECEIVERS || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => z.string().email().safeParse(email).success))]
 }
 
 export function authRoutes({ prisma, config, auth, mailer, shopifyCustomers = createShopifyCustomerService(config) }) {

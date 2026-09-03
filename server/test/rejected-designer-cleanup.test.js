@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { designerRegistrationNotificationRecipients } from '../src/routes/auth.js'
 import { purgeRejectedDesigners, rejectedDesignerPurgeCutoff } from '../src/lib/rejected-designer-cleanup.js'
 
-test('notification email is sent only to SMTP_USER', () => {
-  assert.deepEqual(designerRegistrationNotificationRecipients({ SMTP_USER: 'team@caracole.ph' }), ['team@caracole.ph'])
+test('designer notification recipients are read from the environment configuration', () => {
+  assert.deepEqual(designerRegistrationNotificationRecipients({ DESIGNER_REGISTRATION_RECEIVERS: 'Design@Caracole.ph, design@caracole.ph, invalid-value' }), ['design@caracole.ph'])
 })
 
 test('rejected designers become eligible on the fifteenth calendar day in Manila', () => {

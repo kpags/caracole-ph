@@ -4,7 +4,10 @@ import { addCartItem } from '../data/cart.js'
 import { getProductPath, productKey, useCatalog } from '../data/catalog.js'
 import { getWishlist, toggleWishlist, WISHLIST_EVENT } from '../data/wishlist.js'
 
-const props = defineProps({ product: { type: Object, required: true } })
+const props = defineProps({
+  product: { type: Object, required: true },
+  apiBaseUrl: { type: String, required: true }
+})
 
 const currentImage = ref(0)
 const quantity = ref(1)
@@ -23,6 +26,8 @@ const inquiryOpen = ref(false)
 const inquirySubmitted = ref(false)
 const inquiryClose = ref(null)
 const inquiryForm = reactive({ firstName: '', lastName: '', email: '', contactNumber: '', inquiry: '', captchaConfirmed: false })
+const isSubmittingInquiry = ref(false)
+const inquiryError = ref('')
 const cartToast = ref('')
 let cartToastTimer
 const { products, load } = useCatalog()
@@ -186,6 +191,7 @@ function closeReviews() {
 
 function openInquiry() {
   inquirySubmitted.value = false
+  inquiryError.value = ''
   try {
     const session = JSON.parse(localStorage.getItem('caracole-session') || 'null')
     if (session) {
@@ -201,18 +207,34 @@ function openInquiry() {
 function closeInquiry() {
   inquiryOpen.value = false
   inquirySubmitted.value = false
+  inquiryError.value = ''
 }
 
-function submitInquiry() {
-  const submission = { ...inquiryForm, productName: props.product.name, edpNumber: props.product.edpNumber, submittedAt: new Date().toISOString() }
+async function submitInquiry() {
+  inquiryError.value = ''
+  isSubmittingInquiry.value = true
   try {
-    const inquiries = JSON.parse(localStorage.getItem('caracole-product-inquiries') || '[]')
-    inquiries.push(submission)
-    localStorage.setItem('caracole-product-inquiries', JSON.stringify(inquiries))
-  } catch {
-    localStorage.setItem('caracole-product-inquiries', JSON.stringify([submission]))
+    const response = await fetch(`${props.apiBaseUrl}/api/v1/inquiries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firstName: inquiryForm.firstName,
+        lastName: inquiryForm.lastName,
+        email: inquiryForm.email,
+        contactNumber: inquiryForm.contactNumber,
+        inquiry: inquiryForm.inquiry,
+        productName: props.product.name,
+        edpNumber: props.product.edpNumber || undefined
+      })
+    })
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(body.message || 'We could not submit your inquiry. Please try again.')
+    inquirySubmitted.value = true
+  } catch (error) {
+    inquiryError.value = error.message || 'We could not submit your inquiry. Please try again.'
+  } finally {
+    isSubmittingInquiry.value = false
   }
-  inquirySubmitted.value = true
 }
 
 function handleEscape(event) {
@@ -380,9 +402,9 @@ onBeforeUnmount(() => {
       <div v-if="inquiryOpen" class="inquiry-modal-backdrop" @click.self="closeInquiry">
         <section class="inquiry-modal" role="dialog" aria-modal="true" aria-labelledby="product-inquiry-title">
           <button ref="inquiryClose" class="inquiry-modal__close" type="button" aria-label="Close product inquiry" @click="closeInquiry">×</button>
-          <div v-if="inquirySubmitted" class="inquiry-modal__success"><span aria-hidden="true">✓</span><p class="eyebrow">Inquiry received</p><h2 id="product-inquiry-title">We will be<br />in touch.</h2><p>A Caracole PH specialist will respond with more information about {{ product.name }}.</p><button type="button" @click="closeInquiry">Continue viewing product</button></div>
+          <div v-if="inquirySubmitted" class="inquiry-modal__success"><span aria-hidden="true">✓</span><p class="eyebrow">Inquiry received</p><h2 id="product-inquiry-title">We will be<br />in touch.</h2><p>Caracole PH team will respond with more information about {{ product.name }}<template v-if="product.edpNumber"> (EDP {{ product.edpNumber }})</template>.</p><button type="button" @click="closeInquiry">Continue viewing product</button></div>
           <template v-else><header><p class="eyebrow">Product inquiry</p><h2 id="product-inquiry-title">Ask about<br />{{ product.name }}</h2><p>Want to know more about this product? Send us an inquiry.</p></header>
-          <form class="inquiry-form" @submit.prevent="submitInquiry"><div class="inquiry-fields"><label><span>First name</span><input v-model.trim="inquiryForm.firstName" autocomplete="given-name" required /></label><label><span>Last name</span><input v-model.trim="inquiryForm.lastName" autocomplete="family-name" required /></label><label><span>Email</span><input v-model.trim="inquiryForm.email" type="email" autocomplete="email" required /></label><label><span>Contact number</span><input v-model.trim="inquiryForm.contactNumber" type="tel" autocomplete="tel" required /></label></div><label><span>Enter your inquiry</span><textarea v-model.trim="inquiryForm.inquiry" required></textarea></label><div class="inquiry-form__foot"><label class="inquiry-captcha"><input v-model="inquiryForm.captchaConfirmed" type="checkbox" required /><span><b>I'm not a robot</b><small>Prototype verification</small></span><i aria-hidden="true">✓</i></label><button type="submit">Send inquiry</button></div></form></template>
+          <form class="inquiry-form" @submit.prevent="submitInquiry"><div class="inquiry-fields"><label><span>First name</span><input v-model.trim="inquiryForm.firstName" autocomplete="given-name" required /></label><label><span>Last name</span><input v-model.trim="inquiryForm.lastName" autocomplete="family-name" required /></label><label><span>Email</span><input v-model.trim="inquiryForm.email" type="email" autocomplete="email" required /></label><label><span>Contact number</span><input v-model.trim="inquiryForm.contactNumber" type="tel" autocomplete="tel" required /></label></div><label><span>Enter your inquiry</span><textarea v-model.trim="inquiryForm.inquiry" required></textarea></label><div class="inquiry-form__foot"><label class="inquiry-captcha"><input v-model="inquiryForm.captchaConfirmed" type="checkbox" required /><span><b>I'm not a robot</b></span></label><button type="submit" :disabled="isSubmittingInquiry">{{ isSubmittingInquiry ? 'Sending…' : 'Send inquiry' }}</button></div><p v-if="inquiryError" class="inquiry-form__error" role="alert">{{ inquiryError }}</p></form></template>
         </section>
       </div>
     </Teleport>
