@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { designerRegistrationNotificationRecipients } from '../src/routes/auth.js'
+import { configuredEmailRecipients } from '../src/lib/email-recipients.js'
 import { purgeRejectedDesigners, rejectedDesignerPurgeCutoff } from '../src/lib/rejected-designer-cleanup.js'
 
-test('designer notification recipients are read from the environment configuration', () => {
-  assert.deepEqual(designerRegistrationNotificationRecipients({ DESIGNER_REGISTRATION_RECEIVERS: 'Design@Caracole.ph, design@caracole.ph, invalid-value' }), ['design@caracole.ph'])
+test('legacy environment recipients can be normalized only for the one-time database seed', () => {
+  assert.deepEqual(configuredEmailRecipients('Design@Caracole.ph, design@caracole.ph, invalid-value'), ['design@caracole.ph'])
 })
 
 test('rejected designers become eligible on the fifteenth calendar day in Manila', () => {

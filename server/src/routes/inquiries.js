@@ -2,6 +2,7 @@ import express from 'express'
 import { z } from 'zod'
 import { asyncRoute, HttpError } from '../lib/http.js'
 import { emailSchema } from '../lib/validation.js'
+import { configuredEmailRecipients, getEmailNotificationRecipients } from '../lib/email-recipients.js'
 
 export const inquirySubmissionSchema = z.object({
   firstName: z.string().trim().min(1).max(100),
@@ -23,16 +24,7 @@ export const inquiryListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10)
 }).refine(({ dateFrom, dateTo }) => !dateFrom || !dateTo || dateFrom <= dateTo, { message: 'Start date must not be after end date' })
 
-export function configuredEmailRecipients(value) {
-  return [...new Set(String(value || '')
-    .split(',')
-    .map((email) => email.trim().toLowerCase())
-    .filter((email) => z.string().email().safeParse(email).success))]
-}
-
-export function inquiryRecipients(config) {
-  return configuredEmailRecipients(config.INQUIRY_RECEIVERS)
-}
+export { configuredEmailRecipients }
 
 export function serializeInquiry(inquiry) {
   return {
@@ -92,7 +84,11 @@ export function inquiriesRoutes({ prisma, config, mailer, authenticate, authoriz
 
     await Promise.all([
       mailer.sendInquiryConfirmation({ inquiry, config }),
-      mailer.sendInquiryNotification({ inquiry, recipients: inquiryRecipients(config), config })
+      mailer.sendInquiryNotification({
+        inquiry,
+        recipients: await getEmailNotificationRecipients(prisma, body.productName ? 'PRODUCT_INQUIRY' : 'GENERAL_INQUIRY'),
+        config
+      })
     ])
 
     res.status(201).json({

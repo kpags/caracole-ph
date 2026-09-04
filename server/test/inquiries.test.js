@@ -2,12 +2,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import express from 'express'
 import { errorHandler } from '../src/lib/http.js'
-import { configuredEmailRecipients, inquiriesRoutes, inquiryListWhere, inquiryRecipients, serializeInquiry } from '../src/routes/inquiries.js'
+import { configuredEmailRecipients } from '../src/lib/email-recipients.js'
+import { inquiriesRoutes, inquiryListWhere, serializeInquiry } from '../src/routes/inquiries.js'
 
 function createHarness() {
   const inquiries = []
   const confirmations = []
   const notifications = []
+  const emailRecipients = new Map([
+    ['GENERAL_INQUIRY', { event: 'GENERAL_INQUIRY', toRecipients: ['team@caracole.ph'], ccRecipients: [], bccRecipients: [] }],
+    ['PRODUCT_INQUIRY', { event: 'PRODUCT_INQUIRY', toRecipients: ['team@caracole.ph', 'sales@caracole.ph'], ccRecipients: ['manager@caracole.ph'], bccRecipients: ['audit@caracole.ph'] }]
+  ])
   const prisma = {
     inquiry: {
       async create({ data }) {
@@ -25,6 +30,7 @@ function createHarness() {
       async findUnique({ where }) { return inquiries.find((inquiry) => inquiry.id === where.id) || null }
     }
   }
+  prisma.emailNotificationRecipient = { async findUnique({ where }) { return emailRecipients.get(where.event) || null } }
   prisma.$transaction = async (operations) => Promise.all(operations)
   const mailer = {
     async sendInquiryConfirmation(payload) { confirmations.push(payload) },
@@ -75,13 +81,12 @@ test('inquiries are stored as pending and notify the inquirer and configured adm
     assert.equal(confirmations[0].inquiry.edpNumber, 'SIG-001')
     assert.equal(confirmations[0].inquiry.articleNumber, 'M130-001')
     assert.equal(notifications.length, 1)
-    assert.deepEqual(notifications[0].recipients, ['team@caracole.ph', 'sales@caracole.ph'])
+    assert.deepEqual(notifications[0].recipients, { to: ['team@caracole.ph', 'sales@caracole.ph'], cc: ['manager@caracole.ph'], bcc: ['audit@caracole.ph'] })
   })
 })
 
 test('inquiry recipient lists are normalized and serialized inquiries omit internal fields', () => {
   assert.deepEqual(configuredEmailRecipients(' Team@Caracole.ph,team@caracole.ph,not-an-email '), ['team@caracole.ph'])
-  assert.deepEqual(inquiryRecipients({ INQUIRY_RECEIVERS: 'sales@caracole.ph' }), ['sales@caracole.ph'])
   assert.deepEqual(serializeInquiry({ id: 'inquiry-1', createdAt: new Date('2026-09-03T00:00:00.000Z'), firstName: 'Ava', lastName: 'Santos', email: 'ava@example.com', contactNumber: '+639171234567', message: 'Hello', productName: null, edpNumber: null, articleNumber: null, status: 'PENDING' }), {
     id: 'inquiry-1', createdAt: new Date('2026-09-03T00:00:00.000Z'), firstName: 'Ava', lastName: 'Santos', email: 'ava@example.com', contactNumber: '+639171234567', inquiry: 'Hello', productName: null, edpNumber: null, articleNumber: null, status: 'PENDING'
   })

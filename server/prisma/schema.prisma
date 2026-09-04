@@ -45,6 +45,12 @@ enum InquiryStatus {
   SPAM
 }
 
+enum EmailNotificationEvent {
+  GENERAL_INQUIRY
+  PRODUCT_INQUIRY
+  DESIGNER_REGISTRATION
+}
+
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -117,6 +123,18 @@ model NewsletterSubscriber {
 
   @@index([createdAt])
   @@map("newsletter_subscribers")
+}
+
+model EmailNotificationRecipient {
+  id            String                 @id @default(uuid()) @db.Uuid
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  event         EmailNotificationEvent @unique
+  toRecipients  String[]               @default([]) @map("to_recipients")
+  ccRecipients  String[]               @default([]) @map("cc_recipients")
+  bccRecipients String[]               @default([]) @map("bcc_recipients")
+
+  @@map("email_notification_recipients")
 }
 
 model Inquiry {

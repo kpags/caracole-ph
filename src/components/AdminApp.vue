@@ -7,6 +7,7 @@ import Quill from "quill";
 import "quill/dist/quill.snow.css";
 import AdminContentManager from "./AdminContentManager.vue";
 import AdminShowroomManager from "./AdminShowroomManager.vue";
+import AdminEmailingManager from "./AdminEmailingManager.vue";
 
 const ADMIN_VIEW_STORAGE_KEY = "caracole-admin-view";
 const isAdminInvitationSetup = /^\/admin\/setup-password\/?$/.test(window.location.pathname);
@@ -58,6 +59,15 @@ const orderedGroups = [
     icon: "pi pi-send",
     items: [{ key: "General", label: "General" }, { key: "Product", label: "Product" }],
   },
+  {
+    title: "Emailing",
+    icon: "pi pi-at",
+    items: [
+      { key: "Email General Inquiry", label: "General Inquiry" },
+      { key: "Email Product Inquiry", label: "Product Inquiry" },
+      { key: "Email Designer Registration", label: "Designer Registration" },
+    ],
+  },
   { title: "Newsletter", icon: "pi pi-envelope", items: [] },
   {
     title: "Users",
@@ -69,6 +79,11 @@ const orderedGroups = [
     ],
   },
 ];
+const adminEmailingEvents = {
+  "Email General Inquiry": { event: "GENERAL_INQUIRY", title: "General Inquiry", description: "Choose the administrator recipients notified when a Contact Us inquiry is submitted." },
+  "Email Product Inquiry": { event: "PRODUCT_INQUIRY", title: "Product Inquiry", description: "Choose the administrator recipients notified when a product inquiry is submitted." },
+  "Email Designer Registration": { event: "DESIGNER_REGISTRATION", title: "Designer Registration", description: "Choose the administrator recipients notified when a designer registers." },
+};
 const heroBannerForm = ref({
   title: "",
   subtitle: "",
@@ -221,6 +236,7 @@ const shopTheLookImageStyle = computed(() => ({
   height: `${Math.round(shopTheLookImageDimensions.value.height * shopTheLookZoom.value / 100)}px`,
 }));
 const filteredDesigners = computed(() => designers.value.filter((designer) => !designerStatusFilter.value || (designer.reviewStatus || "PENDING") === designerStatusFilter.value));
+const activeEmailingEvent = computed(() => adminEmailingEvents[active.value] || null);
 
 const heroBannerPreview = computed(
   () => heroBannerPreviewUrl.value || heroBannerExistingMedia.value?.mediaUrl || "",
@@ -264,10 +280,10 @@ const currentAdminIsSuperuser = computed(() => {
 });
 
 function getStoredAdminView() {
-  const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Carts: false, Users: false, Inquiries: false } };
+  const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Carts: false, Users: false, Inquiries: false, Emailing: false } };
   try {
     const value = JSON.parse(sessionStorage.getItem(ADMIN_VIEW_STORAGE_KEY) || "null");
-    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display", "Products", "Registered Carts", "Guest Carts", "Appointments", "General", "Product", "Newsletter", "Admin", "Registered Designers", "Customers"];
+    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display", "Products", "Registered Carts", "Guest Carts", "Appointments", "General", "Product", "Email General Inquiry", "Email Product Inquiry", "Email Designer Registration", "Newsletter", "Admin", "Registered Designers", "Customers"];
     if (value?.active === "Designers") value.active = "Registered Designers";
     if (value?.activeContentLink === "Designers") value.activeContentLink = "Registered Designers";
     if (value?.active === "Session Carts") value.active = "Guest Carts";
@@ -330,6 +346,7 @@ function select(item) {
   if (item === "Products") void loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
   if (["Registered Carts", "Guest Carts"].includes(item)) void loadAdminCarts({ page: 1 });
   if (["General", "Product"].includes(item)) void loadAdminInquiries({ page: 1 });
+  if (adminEmailingEvents[item]) expanded.value.Emailing = true;
   if (item === "Admin") void loadAdminUsers();
   if (item === "Customers") void loadCustomers(1);
   if (item === "Newsletter") void loadNewsletterSubscribers({ page: 1 });
@@ -347,16 +364,6 @@ function toggle(group) {
 }
 
 function selectGroup(group) {
-  if (group.title === "Users") {
-    expanded.value.Users = true;
-    select("Admin");
-    return;
-  }
-  if (group.title === "Carts") {
-    expanded.value.Carts = true;
-    select("Registered Carts");
-    return;
-  }
   if (group.items.length) toggle(group);
   else select(group.title);
 }
@@ -370,7 +377,7 @@ function toggleMobileSidebar() {
     closeMobileSidebar();
     return;
   }
-  expanded.value = { ...expanded.value, Contents: false, Carts: false, Inquiries: false, Users: false };
+  expanded.value = { ...expanded.value, Contents: false, Carts: false, Inquiries: false, Emailing: false, Users: false };
   isMobileSidebarOpen.value = true;
 }
 
@@ -1770,7 +1777,7 @@ function showLogin() {
     </aside>
 
     <main class="admin-main">
-      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Guest Carts', 'General', 'Product'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers', 'Newsletter'].includes(active) }">
+      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Guest Carts', 'General', 'Product'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers', 'Newsletter'].includes(active), 'admin-content--emailing': !!activeEmailingEvent }">
         <h1>{{ adminTopbarTitle }}</h1>
         <template v-if="active === 'Hero Banners'">
           <Transition name="admin-editor-slide">
@@ -2309,6 +2316,9 @@ function showLogin() {
               </div>
             </Transition>
           </Teleport>
+        </template>
+        <template v-else-if="activeEmailingEvent">
+          <AdminEmailingManager :event="activeEmailingEvent.event" :title="activeEmailingEvent.title" :description="activeEmailingEvent.description" :authorized-request="authorizedRequest" />
         </template>
         <template v-else-if="active === 'Newsletter'">
           <section class="admin-users" aria-labelledby="newsletter-title">

@@ -6,6 +6,7 @@ import { asyncRoute, HttpError } from '../lib/http.js'
 import { designerSchema, emailSchema, otpSchema, passwordSchema } from '../lib/validation.js'
 import { designerData } from '../lib/users.js'
 import { createShopifyCustomerService, createUnusablePassword } from '../lib/shopify-customers.js'
+import { getEmailNotificationRecipients } from '../lib/email-recipients.js'
 
 const credentialsSchema = z.object({ email: emailSchema, password: passwordSchema }).strict()
 export const customerRegistrationSchema = z.object({
@@ -36,13 +37,6 @@ function serializeAuthenticatedUser(user) {
   }
 }
 
-export function designerRegistrationNotificationRecipients(config) {
-  return [...new Set(String(config.DESIGNER_REGISTRATION_RECEIVERS || '')
-    .split(',')
-    .map((email) => email.trim().toLowerCase())
-    .filter((email) => z.string().email().safeParse(email).success))]
-}
-
 export function authRoutes({ prisma, config, auth, mailer, shopifyCustomers = createShopifyCustomerService(config) }) {
   const router = express.Router()
 
@@ -55,7 +49,11 @@ export function authRoutes({ prisma, config, auth, mailer, shopifyCustomers = cr
     const designer = { ...user.designer, email: user.email }
     await Promise.all([
       mailer.sendDesignerRegistrationConfirmation({ designer, config }),
-      mailer.sendDesignerRegistrationNotification({ designer, recipients: designerRegistrationNotificationRecipients(config), config })
+      mailer.sendDesignerRegistrationNotification({
+        designer,
+        recipients: await getEmailNotificationRecipients(prisma, 'DESIGNER_REGISTRATION'),
+        config
+      })
     ])
   }
 

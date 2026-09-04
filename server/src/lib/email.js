@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import Handlebars from 'handlebars'
 import nodemailer from 'nodemailer'
+import { EMAIL_NOTIFICATION_EVENT_LABELS, hasEmailNotificationRecipients } from './email-recipients.js'
 
 const templateCache = new Map()
 
@@ -73,6 +74,14 @@ function inquiryTemplateContext(inquiry, appConfig) {
   }
 }
 
+function recipientHeaders(recipients) {
+  return {
+    to: recipients.to,
+    ...(recipients.cc.length ? { cc: recipients.cc } : {}),
+    ...(recipients.bcc.length ? { bcc: recipients.bcc } : {})
+  }
+}
+
 export function createMailer(config) {
   const transporter = nodemailer.createTransport({
     host: config.SMTP_HOST,
@@ -105,12 +114,12 @@ export function createMailer(config) {
       })
     },
     async sendDesignerRegistrationNotification({ designer, recipients, config: appConfig }) {
-      if (!recipients.length) return
+      if (!hasEmailNotificationRecipients(recipients)) return
       const render = await loadTemplate('designer-registration-notification')
       const context = designerTemplateContext(designer, appConfig)
       await transporter.sendMail({
         from: appConfig.EMAIL_FROM,
-        to: recipients,
+        ...recipientHeaders(recipients),
         subject: `New Designer Registration — ${context.fullName}`,
         html: render(context),
         text: `A new designer registration is awaiting review. Name: ${context.fullName}; email: ${context.email}; mobile: ${context.mobileNumber}. Review it at ${context.adminDashboardUrl}.`
@@ -139,15 +148,27 @@ export function createMailer(config) {
       })
     },
     async sendInquiryNotification({ inquiry, recipients, config: appConfig }) {
-      if (!recipients.length) return
+      if (!hasEmailNotificationRecipients(recipients)) return
       const render = await loadTemplate('inquiry-notification')
       const context = inquiryTemplateContext(inquiry, appConfig)
       await transporter.sendMail({
         from: appConfig.EMAIL_FROM,
-        to: recipients,
+        ...recipientHeaders(recipients),
         subject: `New Inquiry — ${context.fullName}`,
         html: render(context),
         text: `A new inquiry is awaiting review. Status: ${context.status}. Name: ${context.fullName}; email: ${context.email}; contact number: ${context.contactNumber}; inquiry: ${context.inquiry}; date inquired: ${context.inquiredAt} (PHT).`
+      })
+    },
+    async sendEmailNotificationTest({ event, recipients, testerEmail, config: appConfig }) {
+      if (!hasEmailNotificationRecipients(recipients)) return
+      const render = await loadTemplate('email-notification-test')
+      const eventLabel = EMAIL_NOTIFICATION_EVENT_LABELS[event] || 'Email Notification'
+      await transporter.sendMail({
+        from: appConfig.EMAIL_FROM,
+        ...recipientHeaders(recipients),
+        subject: `Test Email — ${eventLabel} — ${appConfig.APP_NAME}`,
+        html: render({ appName: appConfig.APP_NAME, eventLabel, testerEmail }),
+        text: `This is just a test email by ${testerEmail}. This verifies the ${eventLabel} recipient configuration.`
       })
     },
     async sendDesignerReviewDecision({ designer, status, config: appConfig }) {

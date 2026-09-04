@@ -12,6 +12,7 @@ import { cartsRoutes } from './routes/carts.js'
 import { newsletterRoutes } from './routes/newsletter.js'
 import { inquiriesRoutes } from './routes/inquiries.js'
 import { showroomsRoutes } from './routes/showrooms.js'
+import { emailingRoutes } from './routes/emailing.js'
 import { asyncRoute, errorHandler, HttpError } from './lib/http.js'
 import { createShopifyCustomerService } from './lib/shopify-customers.js'
 
@@ -27,7 +28,7 @@ export function createApp({ prisma, config, auth, mailer, storage, products }) {
     try {
       const claims = jwt.verify(token, config.JWT_ACCESS_SECRET)
       if (claims.type !== 'access' || !claims.sub) throw new Error('Wrong token type')
-      const user = await prisma.user.findUnique({ where: { id: claims.sub }, select: { id: true, isActive: true, isStaff: true, isSuperuser: true } })
+      const user = await prisma.user.findUnique({ where: { id: claims.sub }, select: { id: true, email: true, isActive: true, isStaff: true, isSuperuser: true } })
       if (!user?.isActive) throw new HttpError(401, 'Authentication is required')
       req.user = user
       next()
@@ -57,6 +58,7 @@ export function createApp({ prisma, config, auth, mailer, storage, products }) {
   app.use('/api/v1/newsletter', newsletterRoutes({ prisma, mailer, config, authenticate, authorize }))
   app.use('/api/v1/inquiries', inquiriesRoutes({ prisma, mailer, config, authenticate, authorize }))
   app.use('/api/v1/showrooms', showroomsRoutes({ prisma, storage, authenticate, authorize }))
+  app.use('/api/v1/emailing', emailingRoutes({ prisma, config, mailer, authenticate, authorize }))
   app.use((_req, _res, next) => next(new HttpError(404, 'Route not found')))
   app.use(errorHandler)
   return app
