@@ -8,8 +8,10 @@ import "quill/dist/quill.snow.css";
 import AdminContentManager from "./AdminContentManager.vue";
 import AdminShowroomManager from "./AdminShowroomManager.vue";
 import AdminEmailingManager from "./AdminEmailingManager.vue";
+import { brandLogoUrl } from "../data/brand-logos.js";
 
 const ADMIN_VIEW_STORAGE_KEY = "caracole-admin-view";
+const adminLogoUrl = brandLogoUrl("butternut", import.meta.env.VITE_MEDIA_BASE_URL);
 const isAdminInvitationSetup = /^\/admin\/setup-password\/?$/.test(window.location.pathname);
 const adminInvitationToken = new URLSearchParams(window.location.search).get("token") || "";
 const contentSectionIds = {
@@ -1540,7 +1542,7 @@ function showLogin() {
 <template>
   <section v-if="isAdminInvitationSetup" class="admin-login-page">
     <form class="admin-login-card" @submit.prevent="completeAdminInvitation">
-      <a class="admin-login-brand" href="/" aria-label="Caracole home">caracole</a>
+      <a class="admin-login-brand" href="/" aria-label="Caracole home"><img :src="adminLogoUrl" alt="Caracole" /></a>
       <p class="admin-login-eyebrow">Caracole Philippines</p>
       <h1>Set up your password</h1>
       <p class="admin-login-copy">Complete your administrator registration by creating a secure password.</p>
@@ -1564,9 +1566,7 @@ function showLogin() {
       class="admin-login-card"
       @submit.prevent="submitLogin"
     >
-      <a class="admin-login-brand" href="/" aria-label="Caracole home"
-        >caracole</a
-      >
+      <a class="admin-login-brand" href="/" aria-label="Caracole home"><img :src="adminLogoUrl" alt="Caracole" /></a>
       <p class="admin-login-eyebrow">Caracole Philippines</p>
       <h1>Admin sign in</h1>
       <p class="admin-login-copy">
@@ -1628,9 +1628,7 @@ function showLogin() {
         resetRequested ? submitPasswordReset() : requestPasswordReset()
       "
     >
-      <a class="admin-login-brand" href="/" aria-label="Caracole home"
-        >caracole</a
-      >
+      <a class="admin-login-brand" href="/" aria-label="Caracole home"><img :src="adminLogoUrl" alt="Caracole" /></a>
       <p class="admin-login-eyebrow">Account recovery</p>
       <h1>Reset password</h1>
       <p class="admin-login-copy">
@@ -1713,7 +1711,7 @@ function showLogin() {
     <aside id="admin-sidebar" class="admin-sidebar" :class="{ 'is-mobile-open': isMobileSidebarOpen }">
       <button class="admin-sidebar__close" type="button" aria-label="Close navigation" @click="closeMobileSidebar"><i class="pi pi-times" aria-hidden="true"></i></button>
       <a class="admin-brand" href="/admin" aria-label="Caracole Philippines admin home">
-        <span class="admin-brand__wordmark">caracole</span>
+        <img class="admin-brand__wordmark" :src="adminLogoUrl" alt="Caracole" />
         <small>Philippines</small>
       </a>
 

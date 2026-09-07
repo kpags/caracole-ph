@@ -15,6 +15,7 @@
     "db:seed-initial-designers": "node scripts/seed-initial-designers.js",
     "db:seed-showrooms": "node scripts/seed-showrooms.js",
     "db:seed-email-notification-recipients": "node scripts/seed-email-notification-recipients.js",
+    "assets:upload-logos": "node --env-file=../.env scripts/upload-brand-logos.js",
     "shopify:sync-products": "node scripts/sync-shopify-products.js",
     "shopify:sync-customers": "node scripts/sync-shopify-customers.js",
     "customers:migrate-to-shopify": "node scripts/migrate-local-customers-to-shopify.js",

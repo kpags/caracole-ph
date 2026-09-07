@@ -52,6 +52,7 @@ import {
   WISHLIST_EVENT,
 } from "./data/wishlist.js";
 import { designers as fallbackDesigners } from "./data/designers.js";
+import { brandLogoUrl } from "./data/brand-logos.js";
 
 const categorySlugs = {
   Living: "living",
@@ -145,6 +146,7 @@ const placeholderHeroBanners = [
 ];
 const videos = ref([...placeholderHeroBanners]);
 const runtimeConfig = useRuntimeConfig();
+const mediaBaseUrl = runtimeConfig.public.mediaBaseUrl;
 const apiBaseUrl = ((import.meta.server
   ? runtimeConfig.apiInternalBaseUrl
   : runtimeConfig.public.apiBaseUrl) || "http://localhost:3000").replace(
@@ -153,6 +155,22 @@ const apiBaseUrl = ((import.meta.server
 );
 configureCatalogApiBaseUrl(apiBaseUrl);
 configureCartApiBaseUrl(apiBaseUrl);
+
+const isHeaderLight = computed(() =>
+  isNewArrivalsPage ||
+  isShopTheLookPage ||
+  isProductPage ||
+  isCartPage ||
+  isCheckoutPage ||
+  isCheckoutReviewPage ||
+  isTestimonialsPage ||
+  isOrdersPage ||
+  isWishlistPage ||
+  isDesignerListPage ||
+  isDesignerProfilePage,
+);
+const headerLogoUrl = computed(() => brandLogoUrl(menuOpen.value || isHeaderLight.value ? "black" : "white", mediaBaseUrl));
+const footerLogoUrl = brandLogoUrl("white", mediaBaseUrl);
 
 const seoTitle = computed(() => {
   if (selectedProduct.value?.name) return selectedProduct.value.name;
@@ -1438,7 +1456,7 @@ onBeforeUnmount(() => {
         :href="homeLink()"
         aria-label="Caracole Philippines home"
       >
-        <img src="/brand/caracole-logo.png" alt="Caracole" />
+        <img :src="headerLogoUrl" alt="Caracole" />
         <small>PHILIPPINES</small>
       </a>
       <a :href="homeLink('#locations')" class="header-link"
@@ -2780,7 +2798,10 @@ onBeforeUnmount(() => {
 
     <footer class="footer">
       <div class="footer-brand">
-        <img src="/brand/caracole-logo.png" alt="Caracole" />
+        <div class="footer-brand__logo">
+          <img :src="footerLogoUrl" alt="Caracole" />
+          <small>PHILIPPINES</small>
+        </div>
         <p>Modern luxury,<br />made personal.</p>
       </div>
       <div class="footer-content">

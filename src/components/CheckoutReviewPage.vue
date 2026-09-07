@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { cartSubtotal, formatCartPrice, getCart, saveCart } from '../data/cart.js'
 import { clearCheckout, getCheckout } from '../data/checkout.js'
 import { saveOrder } from '../data/orders.js'
+import { brandLogoUrl } from '../data/brand-logos.js'
 
 const items = ref([])
 const checkout = ref(null)
@@ -11,6 +12,7 @@ const subtotal = computed(() => cartSubtotal(items.value))
 const total = computed(() => subtotal.value + Number(checkout.value?.shippingFee || 0))
 const shippingNames = { standard: 'Standard delivery', whiteGlove: 'White-glove delivery', pickup: 'Showroom collection' }
 const paymentNames = { gcash: 'GCash', card: 'Credit Card', flexible: 'Installment', qrph: 'QRPH' }
+const checkoutLogoUrl = brandLogoUrl('charcoal', useRuntimeConfig().public.mediaBaseUrl)
 
 function displayDate(value) {
   if (!value) return 'To be arranged'
@@ -41,7 +43,7 @@ onMounted(() => {
 
 <template>
   <main id="main" class="checkout-page checkout-review-page">
-    <div class="checkout-titlebar"><a href="/" class="checkout-wordmark"><img src="/brand/caracole-logo.png" alt="Caracole" /><span>Secure checkout</span></a><div class="checkout-progress"><em>01 Checkout</em><span></span><b>02 Review</b></div></div>
+    <div class="checkout-titlebar"><a href="/" class="checkout-wordmark"><img :src="checkoutLogoUrl" alt="Caracole" /><span>Secure checkout</span></a><div class="checkout-progress"><em>01 Checkout</em><span></span><b>02 Review</b></div></div>
 
     <section v-if="orderNumber" class="order-confirmed">
       <p class="eyebrow">Order received</p><h1>Thank you,<br />your home awaits.</h1><p>Your reference is <b>{{ orderNumber }}</b>. A confirmation will be prepared for the email address you provided.</p><a href="/products/living">Continue shopping →</a>

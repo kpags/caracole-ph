@@ -9,6 +9,8 @@ COPY src ./src/
 COPY public ./public/
 ARG VITE_API_URL=http://localhost:3000
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_MEDIA_BASE_URL=https://cdn.caracole.ph
+ENV VITE_MEDIA_BASE_URL=$VITE_MEDIA_BASE_URL
 
 WORKDIR /app/admin
 RUN npm run build

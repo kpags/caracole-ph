@@ -90,6 +90,35 @@ test('uploads content under a sanitized prefix and returns its public URL', asyn
   assert.equal(client.commands[0].input.ContentType, 'image/jpeg')
 })
 
+test('uploads a fixed object key inside its supplied prefix', async () => {
+  const client = new FakeS3Client()
+  const storage = createStorage(client)
+  const url = await storage.upload({
+    body: Buffer.from('logo image data'),
+    fileName: 'caracole_black.png',
+    contentType: 'image/png',
+    prefix: 'logos',
+    objectKey: 'logos/caracole_black.png',
+    cacheControl: 'public, max-age=300, must-revalidate'
+  })
+
+  assert.equal(url, 'https://media.caracole.ph/logos/caracole_black.png')
+  assert.equal(client.commands[0].input.Key, 'logos/caracole_black.png')
+  assert.equal(client.commands[0].input.ContentType, 'image/png')
+  assert.equal(client.commands[0].input.CacheControl, 'public, max-age=300, must-revalidate')
+})
+
+test('rejects a fixed object key outside its supplied prefix', async () => {
+  const storage = createStorage()
+  await assert.rejects(() => storage.upload({
+    body: Buffer.from('logo image data'),
+    fileName: 'caracole_black.png',
+    contentType: 'image/png',
+    prefix: 'logos',
+    objectKey: 'other/caracole_black.png'
+  }), /inside the supplied prefix/)
+})
+
 test('deletes using a stored object key or the returned public URL', async () => {
   const client = new FakeS3Client()
   const storage = createStorage(client)

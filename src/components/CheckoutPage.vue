@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { cartSubtotal, formatCartPrice, getCart } from '../data/cart.js'
 import { getCheckout, saveCheckout } from '../data/checkout.js'
+import { brandLogoUrl } from '../data/brand-logos.js'
 
 const items = ref([])
 const isGuestCheckout = ref(true)
@@ -25,6 +26,7 @@ const total = computed(() => subtotal.value + shippingFee.value)
 const installmentTerms = [6, 12, 18, 24]
 const flexibleBanks = ['BDO', 'BPI', 'GCash', 'Maya']
 const monthlyInstallment = computed(() => total.value / Number(form.paymentTerm || 1))
+const checkoutLogoUrl = brandLogoUrl('charcoal', useRuntimeConfig().public.mediaBaseUrl)
 
 function dateValue(offset) {
   const date = new Date()
@@ -102,7 +104,7 @@ onMounted(() => {
 
 <template>
   <main id="main" class="checkout-page">
-    <div class="checkout-titlebar"><a href="/" class="checkout-wordmark"><img src="/brand/caracole-logo.png" alt="Caracole" /><span>Secure checkout</span></a><div class="checkout-progress"><b>01 Checkout</b><span></span><em>02 Review</em></div></div>
+    <div class="checkout-titlebar"><a href="/" class="checkout-wordmark"><img :src="checkoutLogoUrl" alt="Caracole" /><span>Secure checkout</span></a><div class="checkout-progress"><b>01 Checkout</b><span></span><em>02 Review</em></div></div>
 
     <section v-if="items.length" class="checkout-layout">
       <form class="checkout-form" @submit.prevent="submit">

@@ -16,7 +16,7 @@ useHead({
     { name: 'twitter:card', content: 'summary_large_image' },
     { name: 'twitter:image', content: '/og.png' },
   ],
-  link: [{ rel: 'icon', href: '/brand/caracole-logo.png' }],
+  link: [{ rel: 'icon', href: 'https://cdn.caracole.ph/logos/caracole_black.png' }],
 })
 </script>
 

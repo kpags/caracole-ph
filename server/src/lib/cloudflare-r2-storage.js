@@ -88,7 +88,7 @@ export class CloudflareR2Storage {
     return `${this.publicBaseUrl}/${encodeObjectKey(this.resolveObjectKey(keyOrPublicUrl))}`
   }
 
-  async upload({ body, fileName, contentType, prefix } = {}) {
+  async upload({ body, fileName, contentType, prefix, objectKey, cacheControl } = {}) {
     if (body === undefined || body === null) {
       throw new TypeError('Upload body is required.')
     }
@@ -96,15 +96,27 @@ export class CloudflareR2Storage {
       throw new TypeError('Upload contentType is required.')
     }
 
+    if (cacheControl !== undefined && (typeof cacheControl !== 'string' || !cacheControl.trim())) {
+      throw new TypeError('Upload cacheControl must be a non-empty string when provided.')
+    }
+
     const normalizedPrefix = normalizePrefix(prefix)
-    const key = `${normalizedPrefix ? `${normalizedPrefix}/` : ''}${randomUUID()}-${sanitizeFilename(fileName)}`
+    const key = objectKey === undefined || objectKey === null || objectKey === ''
+      ? `${normalizedPrefix ? `${normalizedPrefix}/` : ''}${randomUUID()}-${sanitizeFilename(fileName)}`
+      : validateObjectKey(objectKey, 'Upload objectKey')
+
+    if (objectKey && normalizedPrefix && !key.startsWith(`${normalizedPrefix}/`)) {
+      throw new TypeError('Upload objectKey must be inside the supplied prefix.')
+    }
+
     const upload = this.uploadFactory({
       client: this.client,
       params: {
         Bucket: this.bucketName,
         Key: key,
         Body: body,
-        ContentType: contentType.trim()
+        ContentType: contentType.trim(),
+        ...(cacheControl ? { CacheControl: cacheControl.trim() } : {})
       }
     })
 

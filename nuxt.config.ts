@@ -11,6 +11,7 @@ export default defineNuxtConfig({
       // Set NUXT_PUBLIC_API_BASE_URL at runtime. VITE_API_URL remains accepted
       // during the transition so existing local environments keep working.
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || process.env.VITE_API_URL || 'http://localhost:3000',
+      mediaBaseUrl: process.env.NUXT_PUBLIC_MEDIA_BASE_URL || process.env.CLOUDFLARE_R2_PUBLIC_BASE_URL || 'https://cdn.caracole.ph',
     },
   },
   nitro: {
