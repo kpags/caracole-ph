@@ -8,6 +8,7 @@ import "quill/dist/quill.snow.css";
 import AdminContentManager from "./AdminContentManager.vue";
 import AdminShowroomManager from "./AdminShowroomManager.vue";
 import AdminEmailingManager from "./AdminEmailingManager.vue";
+import AdminPaymentsManager from "./AdminPaymentsManager.vue";
 import { brandLogoUrl } from "../data/brand-logos.js";
 
 const ADMIN_VIEW_STORAGE_KEY = "caracole-admin-view";
@@ -68,6 +69,14 @@ const orderedGroups = [
       { key: "Email General Inquiry", label: "General Inquiry" },
       { key: "Email Product Inquiry", label: "Product Inquiry" },
       { key: "Email Designer Registration", label: "Designer Registration" },
+    ],
+  },
+  {
+    title: "Payments",
+    icon: "pi pi-credit-card",
+    items: [
+      { key: "Payment Gateways", label: "Payment Gateways" },
+      { key: "Payments", label: "Payments" },
     ],
   },
   { title: "Newsletter", icon: "pi pi-envelope", items: [] },
@@ -282,10 +291,10 @@ const currentAdminIsSuperuser = computed(() => {
 });
 
 function getStoredAdminView() {
-  const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Carts: false, Users: false, Inquiries: false, Emailing: false } };
+  const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Carts: false, Users: false, Inquiries: false, Emailing: false, Payments: false } };
   try {
     const value = JSON.parse(sessionStorage.getItem(ADMIN_VIEW_STORAGE_KEY) || "null");
-    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display", "Products", "Registered Carts", "Guest Carts", "Appointments", "General", "Product", "Email General Inquiry", "Email Product Inquiry", "Email Designer Registration", "Newsletter", "Admin", "Registered Designers", "Customers"];
+    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display", "Products", "Registered Carts", "Guest Carts", "Appointments", "General", "Product", "Email General Inquiry", "Email Product Inquiry", "Email Designer Registration", "Payment Gateways", "Payments", "Newsletter", "Admin", "Registered Designers", "Customers"];
     if (value?.active === "Designers") value.active = "Registered Designers";
     if (value?.activeContentLink === "Designers") value.activeContentLink = "Registered Designers";
     if (value?.active === "Session Carts") value.active = "Guest Carts";
@@ -345,6 +354,7 @@ function select(item) {
   if (["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display"].includes(item)) expanded.value.Contents = true;
   if (["Admin", "Registered Designers", "Customers"].includes(item)) expanded.value.Users = true;
   if (["Registered Carts", "Guest Carts"].includes(item)) expanded.value.Carts = true;
+  if (["Payment Gateways", "Payments"].includes(item)) expanded.value.Payments = true;
   if (item === "Products") void loadAdminProducts({ page: 1, refreshOptions: !adminProductFilterOptions.value.categories.length });
   if (["Registered Carts", "Guest Carts"].includes(item)) void loadAdminCarts({ page: 1 });
   if (["General", "Product"].includes(item)) void loadAdminInquiries({ page: 1 });
@@ -379,7 +389,7 @@ function toggleMobileSidebar() {
     closeMobileSidebar();
     return;
   }
-  expanded.value = { ...expanded.value, Contents: false, Carts: false, Inquiries: false, Emailing: false, Users: false };
+  expanded.value = { ...expanded.value, Contents: false, Carts: false, Inquiries: false, Emailing: false, Payments: false, Users: false };
   isMobileSidebarOpen.value = true;
 }
 
@@ -1775,7 +1785,7 @@ function showLogin() {
     </aside>
 
     <main class="admin-main">
-      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Guest Carts', 'General', 'Product'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers', 'Newsletter'].includes(active), 'admin-content--emailing': !!activeEmailingEvent }">
+      <section :id="active === 'Hero Banners' ? 'hero-banners' : undefined" class="admin-content" :class="{ 'admin-content--hero-banners': active === 'Hero Banners', 'admin-content--products': active === 'Products', 'admin-content--carts': ['Registered Carts', 'Guest Carts', 'General', 'Product'].includes(active), 'admin-content--users': ['Admin', 'Registered Designers', 'Customers', 'Newsletter'].includes(active), 'admin-content--emailing': !!activeEmailingEvent, 'admin-content--payments': ['Payment Gateways', 'Payments'].includes(active) }">
         <h1>{{ adminTopbarTitle }}</h1>
         <template v-if="active === 'Hero Banners'">
           <Transition name="admin-editor-slide">
@@ -2317,6 +2327,9 @@ function showLogin() {
         </template>
         <template v-else-if="activeEmailingEvent">
           <AdminEmailingManager :event="activeEmailingEvent.event" :title="activeEmailingEvent.title" :description="activeEmailingEvent.description" :authorized-request="authorizedRequest" />
+        </template>
+        <template v-else-if="['Payment Gateways', 'Payments'].includes(active)">
+          <AdminPaymentsManager :section="active" :authorized-request="authorizedRequest" />
         </template>
         <template v-else-if="active === 'Newsletter'">
           <section class="admin-users" aria-labelledby="newsletter-title">

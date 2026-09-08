@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@primeuix/themes": "^2.0.3",
+    "@prisma/client": "^7.10.0",
     "nuxt": "4.2.0",
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",

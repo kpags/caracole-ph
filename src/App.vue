@@ -29,6 +29,7 @@ import ProductDetailPage from "./components/ProductDetailPage.vue";
 import CartPage from "./components/CartPage.vue";
 import CheckoutPage from "./components/CheckoutPage.vue";
 import CheckoutReviewPage from "./components/CheckoutReviewPage.vue";
+import CheckoutReturnPage from "./components/CheckoutReturnPage.vue";
 import ProductSearch from "./components/ProductSearch.vue";
 import TestimonialsPage from "./components/TestimonialsPage.vue";
 import OrderHistoryPage from "./components/OrderHistoryPage.vue";
@@ -77,6 +78,7 @@ const selectedProduct = computed(() => productRouteMatch
 const isCartPage = /^\/cart\/?$/.test(currentPathname);
 const isCheckoutPage = /^\/checkout\/?$/.test(currentPathname);
 const isCheckoutReviewPage = /^\/checkout\/review\/?$/.test(currentPathname);
+const isCheckoutReturnPage = /^\/checkout\/return\/?$/.test(currentPathname);
 const isTestimonialsPage = /^\/testimonials\/?$/.test(currentPathname);
 const isOrdersPage = /^\/orders\/?$/.test(currentPathname);
 const isWishlistPage = /^\/wishlist\/?$/.test(currentPathname);
@@ -102,6 +104,7 @@ const homeLink = (anchor = "") =>
   isCartPage ||
   isCheckoutPage ||
   isCheckoutReviewPage ||
+  isCheckoutReturnPage ||
   isTestimonialsPage ||
   isOrdersPage ||
   isWishlistPage ||
@@ -163,6 +166,7 @@ const isHeaderLight = computed(() =>
   isCartPage ||
   isCheckoutPage ||
   isCheckoutReviewPage ||
+  isCheckoutReturnPage ||
   isTestimonialsPage ||
   isOrdersPage ||
   isWishlistPage ||
@@ -180,7 +184,7 @@ const seoTitle = computed(() => {
   if (isDesignerListPage) return 'Designers';
   if (isTestimonialsPage) return 'Testimonials';
   if (isCartPage) return 'Shopping Cart';
-  if (isCheckoutPage || isCheckoutReviewPage) return 'Checkout';
+  if (isCheckoutPage || isCheckoutReviewPage || isCheckoutReturnPage) return 'Checkout';
   return 'Modern Luxury, Made Personal';
 });
 const seoDescription = computed(() => {
@@ -1432,6 +1436,7 @@ onBeforeUnmount(() => {
           isCartPage ||
           isCheckoutPage ||
           isCheckoutReviewPage ||
+          isCheckoutReturnPage ||
           isTestimonialsPage ||
           isOrdersPage ||
           isWishlistPage ||
@@ -1488,17 +1493,19 @@ onBeforeUnmount(() => {
           <span class="user-button__head"></span
           ><span class="user-button__body"></span>
         </button>
-        <button
-          class="cart-button"
-          type="button"
-          aria-label="Open shopping cart"
-          :aria-expanded="cartOpen"
-          @click="openCart"
-        >
-          <span class="cart-button__handle"></span
-          ><span class="cart-button__bag"></span
-          ><b v-if="cartCount">{{ cartCount > 99 ? "99+" : cartCount }}</b>
-        </button>
+        <span class="cart-button-wrap">
+          <button
+            class="cart-button"
+            type="button"
+            aria-label="Open shopping cart"
+            :aria-expanded="cartOpen"
+            @click="openCart"
+          >
+            <span class="cart-button__handle"></span
+            ><span class="cart-button__bag"></span>
+          </button>
+          <b v-if="cartCount" class="cart-button__count">{{ cartCount > 99 ? "99+" : cartCount }}</b>
+        </span>
         <button
           class="search-button"
           type="button"
@@ -2190,6 +2197,7 @@ onBeforeUnmount(() => {
         !isCartPage &&
         !isCheckoutPage &&
         !isCheckoutReviewPage &&
+        !isCheckoutReturnPage &&
         !isTestimonialsPage &&
         !isOrdersPage &&
         !isWishlistPage &&
@@ -2738,6 +2746,7 @@ onBeforeUnmount(() => {
     <main v-else-if="isProductPage" id="main" class="catalog-page"><section class="catalog-empty"><p class="eyebrow">{{ catalogStatus === 'error' ? 'Catalog unavailable' : 'Loading product' }}</p><h2>{{ catalogStatus === 'error' ? 'We couldn’t load this product.' : 'Gathering the details.' }}</h2><p v-if="catalogStatus === 'error'">{{ catalogError }}</p><button v-if="catalogStatus === 'error'" type="button" @click="loadCatalog({ force: true }).catch(() => {})">Try again</button></section></main>
     <CartPage v-else-if="isCartPage" />
     <CheckoutPage v-else-if="isCheckoutPage" />
+    <CheckoutReturnPage v-else-if="isCheckoutReturnPage" :order-number="routeQuery.get('order') || ''" :token="routeQuery.get('token') || ''" :result="routeQuery.get('result') || ''" />
     <TestimonialsPage v-else-if="isTestimonialsPage" />
     <OrderHistoryPage v-else-if="isOrdersPage" />
     <WishlistPage v-else-if="isWishlistPage" />

@@ -13,13 +13,17 @@ import { newsletterRoutes } from './routes/newsletter.js'
 import { inquiriesRoutes } from './routes/inquiries.js'
 import { showroomsRoutes } from './routes/showrooms.js'
 import { emailingRoutes } from './routes/emailing.js'
+import { paymentsRoutes, paymentWebhookRoutes } from './routes/payments.js'
 import { asyncRoute, errorHandler, HttpError } from './lib/http.js'
 import { createShopifyCustomerService } from './lib/shopify-customers.js'
 
-export function createApp({ prisma, config, auth, mailer, storage, products }) {
+export function createApp({ prisma, config, auth, mailer, storage, products, fetchImpl }) {
   const app = express()
   app.disable('x-powered-by')
   app.use(cors({ origin: config.CORS_ORIGIN.split(',').map((origin) => origin.trim()), credentials: true }))
+  // PayMongo signs the exact raw request body, so this router must run before
+  // the global JSON parser consumes it.
+  app.use('/api/v1/payments/webhooks', paymentWebhookRoutes({ prisma, config }))
   app.use(express.json({ limit: '100kb' }))
 
   const authenticate = asyncRoute(async (req, _res, next) => {
@@ -59,6 +63,7 @@ export function createApp({ prisma, config, auth, mailer, storage, products }) {
   app.use('/api/v1/inquiries', inquiriesRoutes({ prisma, mailer, config, authenticate, authorize }))
   app.use('/api/v1/showrooms', showroomsRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/emailing', emailingRoutes({ prisma, config, mailer, authenticate, authorize }))
+  app.use('/api/v1/payments', paymentsRoutes({ prisma, config, authenticate, authorize, fetchImpl }))
   app.use((_req, _res, next) => next(new HttpError(404, 'Route not found')))
   app.use(errorHandler)
   return app

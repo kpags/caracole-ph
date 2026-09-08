@@ -9,6 +9,15 @@ export const config = z.object({
   DATABASE_URL: z.string().url(),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   APP_NAME: z.string().min(1).default('Caracole PH'),
+  STOREFRONT_PUBLIC_URL: z.string().url().default('http://localhost:5173'),
+  PAYMENT_WEBHOOK_PUBLIC_BASE_URL: z.string().url().default('http://localhost:3000'),
+  PAYMENT_CREDENTIAL_ENCRYPTION_KEY: z.string().refine((value) => {
+    try {
+      return Buffer.from(value, 'base64').length === 32;
+    } catch {
+      return false;
+    }
+  }, 'PAYMENT_CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key'),
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),

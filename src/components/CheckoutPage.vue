@@ -10,8 +10,6 @@ const form = reactive({
   firstName: '', lastName: '', email: '', phone: '', address: '', apartment: '',
   city: '', province: '', postalCode: '', country: 'Philippines',
   shippingMethod: 'standard', deliveryDate: '', deliveryTime: '10:00–14:00',
-  paymentMethod: 'gcash', gcashNumber: '', cardholder: '', cardNumber: '', expiry: '', cvv: '',
-  paymentTerm: '6', flexibleBank: 'BDO',
   billingSame: true,
 })
 
@@ -23,9 +21,6 @@ const shippingOptions = {
 const subtotal = computed(() => cartSubtotal(items.value))
 const shippingFee = computed(() => shippingOptions[form.shippingMethod].fee)
 const total = computed(() => subtotal.value + shippingFee.value)
-const installmentTerms = [6, 12, 18, 24]
-const flexibleBanks = ['BDO', 'BPI', 'GCash', 'Maya']
-const monthlyInstallment = computed(() => total.value / Number(form.paymentTerm || 1))
 const checkoutLogoUrl = brandLogoUrl('charcoal', useRuntimeConfig().public.mediaBaseUrl)
 
 function dateValue(offset) {
@@ -58,14 +53,6 @@ function submit() {
     shippingMethod: form.shippingMethod,
     deliveryDate: form.deliveryDate,
     deliveryTime: form.deliveryTime,
-    paymentMethod: form.paymentMethod,
-    paymentTerm: form.paymentMethod === 'flexible' ? form.paymentTerm : 'full',
-    paymentDetails: {
-      gcashNumber: form.paymentMethod === 'gcash' ? form.gcashNumber : '',
-      cardholder: form.paymentMethod === 'card' ? form.cardholder : '',
-      cardLastFour: form.paymentMethod === 'card' ? form.cardNumber.replace(/\s/g, '').slice(-4) : '',
-      flexibleBank: form.paymentMethod === 'flexible' ? form.flexibleBank : '',
-    },
     billingSame: form.billingSame,
     shippingFee: shippingFee.value,
     savedAt: new Date().toISOString(),
@@ -83,11 +70,6 @@ onMounted(() => {
     form.shippingMethod = saved.shippingMethod || form.shippingMethod
     form.deliveryDate = saved.deliveryDate || form.deliveryDate
     form.deliveryTime = saved.deliveryTime || form.deliveryTime
-    form.paymentMethod = saved.paymentMethod || form.paymentMethod
-    form.paymentTerm = saved.paymentTerm && saved.paymentTerm !== 'full' ? saved.paymentTerm : '6'
-    form.flexibleBank = saved.paymentDetails?.flexibleBank || 'BDO'
-    form.gcashNumber = saved.paymentDetails?.gcashNumber || ''
-    form.cardholder = saved.paymentDetails?.cardholder || ''
     form.billingSame = saved.billingSame ?? true
   } else {
     try {
@@ -148,23 +130,8 @@ onMounted(() => {
 
         <fieldset id="payment" class="checkout-section">
           <legend><span>03</span>Payment</legend>
-          <p class="checkout-secure">Your payment details are securely handled in this prototype.</p>
-          <div class="payment-tabs" role="radiogroup" aria-label="Payment method">
-            <label :class="{ selected: form.paymentMethod === 'gcash' }"><input v-model="form.paymentMethod" type="radio" value="gcash" /><b>GCash</b><small>Pay with your mobile wallet</small></label>
-            <label :class="{ selected: form.paymentMethod === 'card' }"><input v-model="form.paymentMethod" type="radio" value="card" /><b>Credit Card</b><small>Visa or Mastercard</small></label>
-            <label :class="{ selected: form.paymentMethod === 'flexible' }"><input v-model="form.paymentMethod" type="radio" value="flexible" /><b>Installment</b><small>6 to 24 monthly payments</small></label>
-            <label :class="{ selected: form.paymentMethod === 'qrph' }"><input v-model="form.paymentMethod" type="radio" value="qrph" /><b>QRPH</b><small>Scan with a supported app</small></label>
-          </div>
-          <div v-if="form.paymentMethod === 'gcash'" class="payment-detail"><label>GCash mobile number<input v-model.trim="form.gcashNumber" type="tel" placeholder="09XX XXX XXXX" required /></label><p>You will receive a secure authorization prompt after review.</p></div>
-          <div v-else-if="form.paymentMethod === 'card'" class="payment-detail">
-            <div class="checkout-fields checkout-fields--card"><label>Cardholder name<input v-model.trim="form.cardholder" autocomplete="cc-name" required /></label><label>Card number<input v-model.trim="form.cardNumber" inputmode="numeric" autocomplete="cc-number" placeholder="0000 0000 0000 0000" required /></label><label>Expiry<input v-model.trim="form.expiry" autocomplete="cc-exp" placeholder="MM / YY" required /></label><label>CVV<input v-model.trim="form.cvv" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" required /></label></div>
-          </div>
-          <div v-else-if="form.paymentMethod === 'flexible'" class="payment-detail payment-detail--flexible">
-            <div><p class="payment-detail__label">Select provider</p><div class="flexible-banks"><label v-for="bank in flexibleBanks" :key="bank" :class="{ selected: form.flexibleBank === bank }"><input v-model="form.flexibleBank" type="radio" :value="bank" />{{ bank }}</label></div></div>
-            <div><p class="payment-detail__label">Select term</p><div class="flexible-terms"><label v-for="term in installmentTerms" :key="term" :class="{ selected: form.paymentTerm === String(term) }"><input v-model="form.paymentTerm" type="radio" :value="String(term)" /><span><b>{{ term }} Months</b><small>{{ formatCartPrice(total / term) }} / month</small></span></label></div></div>
-            <p class="flexible-total">Estimated monthly payment <strong>{{ formatCartPrice(monthlyInstallment) }}</strong> for {{ form.paymentTerm }} months through {{ form.flexibleBank }}.</p>
-          </div>
-          <div v-else class="payment-detail payment-detail--qr"><b>QRPH payment</b><p>Your one-time QR code will be presented after you confirm the order.</p></div>
+          <p class="checkout-secure">Payment details are collected only on PayMongo’s secure hosted checkout page after your order review.</p>
+          <div class="payment-detail payment-detail--qr"><b>PayMongo Hosted Checkout</b><p>Available payment methods are securely shown by PayMongo based on the Caracole PH account.</p></div>
           <label class="checkout-checkbox"><input v-model="form.billingSame" type="checkbox" /> Billing address is the same as the delivery address</label>
         </fieldset>
 

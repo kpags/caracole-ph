@@ -11,7 +11,9 @@ const logos = [
   'caracole_black.png',
   'caracole_white.png',
   'caracole_charcoal.png',
-  'caracole_butternut.png'
+  'caracole_butternut.png',
+  'paymongo.png',
+  'stripe.png'
 ]
 
 async function uploadBrandLogos() {

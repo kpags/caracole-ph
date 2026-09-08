@@ -51,6 +51,30 @@ enum EmailNotificationEvent {
   DESIGNER_REGISTRATION
 }
 
+enum PaymentGatewayProvider {
+  PAYMONGO
+  STRIPE
+}
+
+enum PaymentGatewayMode {
+  TEST
+  LIVE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -433,4 +457,154 @@ model Cart {
   @@index([status, updatedAt])
   @@index([customerEmail])
   @@map("carts")
+}
+
+model PaymentGateway {
+  id          String                 @id @default(uuid()) @db.Uuid
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?              @map("deleted_at") @db.Timestamptz(6)
+  provider    PaymentGatewayProvider @unique
+  isEnabled   Boolean                @default(true) @map("is_enabled")
+  useTestMode Boolean                @default(true) @map("use_test_mode")
+  credentials PaymentGatewayCredential[]
+  webhooks    PaymentGatewayWebhook[]
+  payments    Payment[]
+
+  @@index([deletedAt, updatedAt])
+  @@map("payment_gateways")
+}
+
+model PaymentGatewayCredential {
+  id                       String             @id @default(uuid()) @db.Uuid
+  createdAt                DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  gatewayId                String             @map("gateway_id") @db.Uuid
+  mode                     PaymentGatewayMode
+  baseUrl                  String             @default("https://api.paymongo.com") @map("base_url") @db.VarChar(255)
+  publicKey                String             @map("public_key") @db.Text
+  secretKeyCiphertext      String             @map("secret_key_ciphertext") @db.Text
+  secretKeyFingerprint     String             @map("secret_key_fingerprint") @db.VarChar(128)
+  sendEmailReceipt         Boolean            @default(false) @map("send_email_receipt")
+  gateway                  PaymentGateway     @relation(fields: [gatewayId], references: [id], onDelete: Cascade)
+  webhooks                 PaymentGatewayWebhook[]
+  payments                 Payment[]
+
+  @@unique([gatewayId, mode])
+  @@index([mode])
+  @@map("payment_gateway_credentials")
+}
+
+model PaymentGatewayWebhook {
+  id                      String                   @id @default(uuid()) @db.Uuid
+  createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  gatewayId               String                   @map("gateway_id") @db.Uuid
+  credentialId            String                   @map("credential_id") @db.Uuid
+  providerWebhookId       String                   @unique @map("provider_webhook_id") @db.VarChar(120)
+  eventType               String                   @map("event_type") @db.VarChar(120)
+  url                     String                   @db.Text
+  status                  String                   @default("enabled") @db.VarChar(40)
+  signingSecretCiphertext String                   @map("signing_secret_ciphertext") @db.Text
+  signingSecretFingerprint String                  @map("signing_secret_fingerprint") @db.VarChar(128)
+  gateway                 PaymentGateway           @relation(fields: [gatewayId], references: [id], onDelete: Cascade)
+  credential              PaymentGatewayCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  logs                    PaymentWebhookLog[]
+
+  @@index([gatewayId, createdAt])
+  @@index([credentialId, createdAt])
+  @@map("payment_gateway_webhooks")
+}
+
+model Order {
+  id                  String        @id @default(uuid()) @db.Uuid
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  orderNumber         String        @unique @map("order_number") @db.VarChar(80)
+  accessTokenHash     String        @unique @map("access_token_hash") @db.VarChar(128)
+  customer            Json
+  delivery            Json
+  items               Json
+  subtotal            Decimal       @default(0) @db.Decimal(14, 2)
+  shippingFee         Decimal       @default(0) @map("shipping_fee") @db.Decimal(14, 2)
+  total               Decimal       @default(0) @db.Decimal(14, 2)
+  currencyCode        String        @default("PHP") @map("currency_code") @db.VarChar(3)
+  paymentStatus       PaymentStatus @default(PENDING) @map("payment_status")
+  payments            Payment[]
+
+  @@index([paymentStatus, createdAt])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model Payment {
+  id                        String                   @id @default(uuid()) @db.Uuid
+  createdAt                 DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  orderId                   String                   @map("order_id") @db.Uuid
+  gatewayId                 String                   @map("gateway_id") @db.Uuid
+  credentialId              String                   @map("credential_id") @db.Uuid
+  provider                  PaymentGatewayProvider
+  mode                      PaymentGatewayMode
+  status                    PaymentStatus            @default(PENDING)
+  amount                    Decimal                  @db.Decimal(14, 2)
+  currencyCode              String                   @default("PHP") @map("currency_code") @db.VarChar(3)
+  providerCheckoutSessionId String?                  @unique @map("provider_checkout_session_id") @db.VarChar(160)
+  checkoutUrl               String?                  @map("checkout_url") @db.Text
+  providerPaymentIntentId   String?                  @map("provider_payment_intent_id") @db.VarChar(160)
+  providerPaymentId         String?                  @unique @map("provider_payment_id") @db.VarChar(160)
+  paymentMethod             String?                  @map("payment_method") @db.VarChar(80)
+  fee                       Decimal?                 @db.Decimal(14, 2)
+  netAmount                 Decimal?                 @map("net_amount") @db.Decimal(14, 2)
+  providerPayload           Json?                    @map("provider_payload")
+  paidAt                    DateTime?                @map("paid_at") @db.Timestamptz(6)
+  order                     Order                    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  gateway                   PaymentGateway           @relation(fields: [gatewayId], references: [id], onDelete: Restrict)
+  credential                PaymentGatewayCredential @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  attempts                  PaymentAttempt[]
+  webhookLogs               PaymentWebhookLog[]
+
+  @@index([orderId, createdAt])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+model PaymentAttempt {
+  id                      String               @id @default(uuid()) @db.Uuid
+  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  paymentId               String               @map("payment_id") @db.Uuid
+  providerPaymentIntentId String?              @unique @map("provider_payment_intent_id") @db.VarChar(160)
+  providerPaymentId       String?              @unique @map("provider_payment_id") @db.VarChar(160)
+  status                  PaymentAttemptStatus @default(PENDING)
+  paymentMethod           String?              @map("payment_method") @db.VarChar(80)
+  amount                  Decimal?             @db.Decimal(14, 2)
+  fee                     Decimal?             @db.Decimal(14, 2)
+  netAmount               Decimal?             @map("net_amount") @db.Decimal(14, 2)
+  providerPayload         Json?                @map("provider_payload")
+  payment                 Payment              @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId, createdAt])
+  @@map("payment_attempts")
+}
+
+model PaymentWebhookLog {
+  id                String                  @id @default(uuid()) @db.Uuid
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  webhookId         String?                 @map("webhook_id") @db.Uuid
+  paymentId         String?                 @map("payment_id") @db.Uuid
+  providerEventId   String?                 @map("provider_event_id") @db.VarChar(160)
+  eventType         String?                 @map("event_type") @db.VarChar(120)
+  payload           Json?
+  signatureVerified Boolean                 @default(false) @map("signature_verified")
+  processedAt       DateTime?               @map("processed_at") @db.Timestamptz(6)
+  processingError   String?                 @map("processing_error") @db.Text
+  webhook           PaymentGatewayWebhook?  @relation(fields: [webhookId], references: [id], onDelete: SetNull)
+  payment           Payment?                @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([webhookId, providerEventId])
+  @@index([webhookId, createdAt])
+  @@index([paymentId, createdAt])
+  @@index([createdAt])
+  @@map("payment_webhook_logs")
 }
