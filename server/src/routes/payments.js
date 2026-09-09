@@ -79,7 +79,7 @@ function serializeGateway(gateway) {
     baseUrl: credential.baseUrl
   }]))
   return {
-    id: gateway.id, provider: gateway.provider, isEnabled: gateway.isEnabled, useTestMode: gateway.useTestMode,
+    id: gateway.id, provider: gateway.provider, isEnabled: gateway.isEnabled, isActive: gateway.isActive, useTestMode: gateway.useTestMode,
     activeMode: modeFromGateway(gateway), createdAt: gateway.createdAt, updatedAt: gateway.updatedAt,
     credentials, webhookCount: gateway._count?.webhooks ?? gateway.webhooks?.length ?? 0
   }
@@ -122,6 +122,19 @@ function requireConfiguredCredential(input, existing, mode) {
 
 function safeProviderError(error) {
   return error instanceof HttpError ? error : new HttpError(502, 'PayMongo request failed')
+}
+
+async function assignActiveGateway(prisma, gatewayId, isActive) {
+  if (!isActive) return prisma.paymentGateway.update({ where: { id: gatewayId }, data: { isActive: false } })
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.paymentGateway.updateMany({ where: { id: { not: gatewayId }, isActive: true, deletedAt: null }, data: { isActive: false } })
+      return tx.paymentGateway.update({ where: { id: gatewayId }, data: { isActive: true } })
+    })
+  } catch (error) {
+    if (error?.code === 'P2002') throw new HttpError(409, 'Another active payment gateway was assigned. Refresh and try again.')
+    throw error
+  }
 }
 
 async function saveCredentials(prisma, gateway, body, config) {
@@ -257,7 +270,7 @@ export function paymentsRoutes({ prisma, config, authenticate, authorize, fetchI
 
   router.post('/checkout', asyncRoute(async (req, res) => {
     const body = checkoutSchema.parse(req.body)
-    const gateway = await prisma.paymentGateway.findFirst({ where: { provider: PAYMONGO, isEnabled: true, deletedAt: null }, include: { credentials: true } })
+    const gateway = await prisma.paymentGateway.findFirst({ where: { provider: PAYMONGO, isEnabled: true, isActive: true, deletedAt: null }, include: { credentials: true } })
     if (!gateway) throw new HttpError(409, 'Online payment is not available yet. Please contact Caracole PH.')
     const credential = credentialForMode(gateway)
     const requested = new Map()
@@ -314,9 +327,11 @@ export function paymentsRoutes({ prisma, config, authenticate, authorize, fetchI
   router.get('/orders/:orderNumber/status', asyncRoute(async (req, res) => {
     const orderNumber = z.string().trim().min(1).max(80).parse(req.params.orderNumber)
     const { token } = statusQuery.parse(req.query)
-    const order = await prisma.order.findUnique({ where: { orderNumber } })
+    const order = await prisma.order.findUnique({ where: { orderNumber }, include: { payments: { orderBy: { createdAt: 'desc' }, take: 1, select: { checkoutUrl: true, status: true } } } })
     if (!order || order.accessTokenHash !== hashPaymentAccessToken(token)) throw new HttpError(404, 'Order not found')
-    res.json({ order: { orderNumber: order.orderNumber, paymentStatus: order.paymentStatus, total: currencyAmount(order.total), currencyCode: order.currencyCode, createdAt: order.createdAt } })
+    const latestPayment = order.payments?.[0]
+    const checkoutUrl = order.paymentStatus === 'PENDING' && latestPayment?.status === 'PENDING' ? latestPayment.checkoutUrl : null
+    res.json({ order: { orderNumber: order.orderNumber, paymentStatus: order.paymentStatus, total: currencyAmount(order.total), currencyCode: order.currencyCode, createdAt: order.createdAt, checkoutUrl } })
   }))
 
   router.use(authenticate, authorize('staff'))
@@ -324,11 +339,12 @@ export function paymentsRoutes({ prisma, config, authenticate, authorize, fetchI
   router.get('/gateways', asyncRoute(async (req, res) => {
     const query = pageQuery.parse(req.query)
     const where = { deletedAt: null }
-    const [totalItems, gateways] = await prisma.$transaction([
+    const [totalItems, gateways, activeGateway] = await prisma.$transaction([
       prisma.paymentGateway.count({ where }),
-      prisma.paymentGateway.findMany({ where, include: { credentials: true, _count: { select: { webhooks: true } } }, orderBy: { updatedAt: 'desc' }, skip: (query.page - 1) * query.limit, take: query.limit })
+      prisma.paymentGateway.findMany({ where, include: { credentials: true, _count: { select: { webhooks: true } } }, orderBy: { updatedAt: 'desc' }, skip: (query.page - 1) * query.limit, take: query.limit }),
+      prisma.paymentGateway.findFirst({ where: { isActive: true, deletedAt: null }, select: { id: true, provider: true } })
     ])
-    res.json({ gateways: gateways.map(serializeGateway), pagination: { page: query.page, limit: query.limit, totalItems, totalPages: Math.ceil(totalItems / query.limit) } })
+    res.json({ gateways: gateways.map(serializeGateway), activeGateway, pagination: { page: query.page, limit: query.limit, totalItems, totalPages: Math.ceil(totalItems / query.limit) } })
   }))
 
   router.post('/gateways/paymongo/test-credentials', asyncRoute(async (req, res) => {
@@ -350,9 +366,9 @@ export function paymentsRoutes({ prisma, config, authenticate, authorize, fetchI
     let gateway = await prisma.paymentGateway.findUnique({ where: { provider: PAYMONGO }, include: { credentials: true } })
     if (gateway && !gateway.deletedAt) throw new HttpError(409, 'PayMongo is already connected')
     if (gateway?.deletedAt) {
-      gateway = await prisma.paymentGateway.update({ where: { id: gateway.id }, data: { deletedAt: null, isEnabled: body.isEnabled, useTestMode: body.useTestMode }, include: { credentials: true } })
+      gateway = await prisma.paymentGateway.update({ where: { id: gateway.id }, data: { deletedAt: null, isEnabled: body.isEnabled, isActive: false, useTestMode: body.useTestMode }, include: { credentials: true } })
     } else {
-      gateway = await prisma.paymentGateway.create({ data: { provider: PAYMONGO, isEnabled: body.isEnabled, useTestMode: body.useTestMode }, include: { credentials: true } })
+      gateway = await prisma.paymentGateway.create({ data: { provider: PAYMONGO, isEnabled: body.isEnabled, isActive: false, useTestMode: body.useTestMode }, include: { credentials: true } })
     }
     await saveCredentials(prisma, gateway, body, config)
     const saved = await prisma.paymentGateway.findUnique({ where: { id: gateway.id }, include: { credentials: true, _count: { select: { webhooks: true } } } })
@@ -370,6 +386,15 @@ export function paymentsRoutes({ prisma, config, authenticate, authorize, fetchI
     res.json({ gateway: serializeGateway(saved) })
   }))
 
+  router.post('/gateways/:id/assign-active', asyncRoute(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id)
+    const gateway = await prisma.paymentGateway.findFirst({ where: { id, isEnabled: true, deletedAt: null } })
+    if (!gateway) throw new HttpError(409, 'Only an enabled payment gateway can be assigned to checkout')
+    await assignActiveGateway(prisma, id, true)
+    const saved = await prisma.paymentGateway.findUnique({ where: { id }, include: { credentials: true, _count: { select: { webhooks: true } } } })
+    res.json({ gateway: serializeGateway(saved) })
+  }))
+
   router.delete('/gateways/:id', asyncRoute(async (req, res) => {
     const id = z.string().uuid().parse(req.params.id)
     const gateway = await prisma.paymentGateway.findFirst({ where: { id, provider: PAYMONGO, deletedAt: null }, include: { credentials: true, webhooks: { include: { credential: true } } } })
@@ -380,7 +405,7 @@ export function paymentsRoutes({ prisma, config, authenticate, authorize, fetchI
     }
     await prisma.$transaction([
       prisma.paymentGatewayWebhook.deleteMany({ where: { gatewayId: id } }),
-      prisma.paymentGateway.update({ where: { id }, data: { isEnabled: false, deletedAt: new Date() } })
+      prisma.paymentGateway.update({ where: { id }, data: { isEnabled: false, isActive: false, deletedAt: new Date() } })
     ])
     res.status(204).end()
   }))
@@ -442,4 +467,4 @@ export function paymentsRoutes({ prisma, config, authenticate, authorize, fetchI
   return router
 }
 
-export { PAYMONGO_PAYMENT_METHOD_TYPES, PAYMONGO_WEBHOOK_EVENTS, serializeGateway, serializePayment }
+export { PAYMONGO_PAYMENT_METHOD_TYPES, PAYMONGO_WEBHOOK_EVENTS, assignActiveGateway, serializeGateway, serializePayment }

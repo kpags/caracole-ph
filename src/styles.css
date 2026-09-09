@@ -1038,6 +1038,9 @@ body.modal-scroll-lock { overflow: hidden; }
 .checkout-empty, .order-confirmed { min-height: 680px; display: grid; place-content: center; justify-items: center; padding: 80px 24px; text-align: center; }
 .checkout-empty h1, .order-confirmed h1 { margin: 15px 0 30px; font: clamp(58px, 7vw, 105px)/.94 var(--serif); }
 .checkout-empty a, .order-confirmed a { padding-bottom: 7px; border-bottom: 1px solid var(--ink); font-size: 8px; text-transform: uppercase; letter-spacing: .15em; }
+.checkout-return-page__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 13px 20px; }
+.order-confirmed .checkout-return-page__resume { min-height: 38px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0 17px; border: 1px solid var(--ink); background: var(--ink); color: #fff; font-weight: 700; }
+.order-confirmed .checkout-return-page__resume:hover, .order-confirmed .checkout-return-page__resume:focus-visible { background: var(--champagne); border-color: var(--champagne); outline: none; }
 .review-content > header { margin-bottom: 55px; }
 .review-card { border-top: 1px solid var(--line); }
 .review-card > div { display: grid; grid-template-columns: auto 1fr auto; align-items: center; padding: 27px 0; }
@@ -1773,6 +1776,10 @@ select:not([multiple]) { appearance: none; -webkit-appearance: none; padding-rig
 .admin-payments__table.p-datatable { width: 100%; }
 .admin-payments__provider { display: inline-flex; align-items: center; gap: 10px; }
 .admin-payments__provider > img { width: 34px; height: 28px; object-fit: contain; object-position: center; }
+.admin-payments__gateway-cell { display: flex; align-items: center; min-height: 34px; margin: -12px -15px; padding: 12px 15px; }
+.admin-payments__gateway-cell.is-active { background: #edf8ef; box-shadow: inset 3px 0 #72aa7e; }
+.admin-payments__gateway-cell .admin-payments__provider { flex-wrap: wrap; }
+.admin-payments__gateway-cell .admin-payments__provider small { width: 100%; margin: -3px 0 0 44px; color: #39734b; font-weight: 700; }
 .admin-payment-picker__icon { overflow: hidden; border-radius: 6px; background: #fff; }
 .admin-payment-picker__icon > img { width: 100%; height: 100%; object-fit: contain; object-position: center; }
 .admin-payment-editor__credentials { grid-template-columns: 1fr; }
@@ -1781,6 +1788,9 @@ select:not([multiple]) { appearance: none; -webkit-appearance: none; padding-rig
 .admin-payment-editor__check > span, .admin-payment-editor__test-mode > span { color: #42464b; font-size: 12px; font-weight: 500; }
 .admin-payment-editor__check { margin-top: 3px; }
 .admin-payment-editor__test-mode { margin-top: 18px; }
+.admin-payment-editor__assign-active { border-color: #76a983 !important; background: #f1faf3 !important; color: #2c7140 !important; }
+.admin-payment-editor__assign-active:hover:not(:disabled) { border-color: #4f8a60 !important; background: #e4f5e8 !important; }
+.admin-payment-editor__assign-active:disabled { cursor: default; opacity: .72; }
 .admin-payment-editor .p-checkbox { display: inline-flex; flex: 0 0 auto; }
 .admin-payment-editor .p-checkbox .p-checkbox-box { width: 18px; height: 18px; border-color: #bca36f; border-radius: 4px; background: #fff; box-shadow: none; }
 .admin-payment-editor .p-checkbox.p-checkbox-checked .p-checkbox-box { border-color: #a77c37; background: #a77c37; }
@@ -1794,7 +1804,7 @@ select:not([multiple]) { appearance: none; -webkit-appearance: none; padding-rig
 .admin-payment-editor__test-credential { display: inline-flex; width: max-content; min-height: 34px; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid #b4863c; border-radius: 4px; background: #fff; color: #805d25; cursor: pointer; font: 700 11px 'Century Gothic', Arial, sans-serif; }
 .admin-payment-editor__test-credential:hover:not(:disabled) { background: #fcf7ed; box-shadow: 0 4px 10px rgba(86,67,37,.12); transform: translateY(-1px); }
 .admin-payment-editor__test-credential:disabled { cursor: wait; opacity: .6; }
-.admin-payment-editor__toast { position: absolute; z-index: 2; top: 14px; left: 50%; max-width: calc(100% - 150px); margin: 0; padding: 10px 14px; border: 1px solid; border-radius: 5px; box-shadow: 0 7px 20px rgba(37,40,44,.18); font-size: 12px; font-weight: 600; transform: translateX(-50%); }
+.admin-payment-editor__toast { position: fixed; z-index: 1100; top: max(16px, env(safe-area-inset-top)); left: 50%; width: min(480px, calc(100vw - 32px)); box-sizing: border-box; margin: 0; padding: 10px 14px; border: 1px solid; border-radius: 5px; box-shadow: 0 7px 20px rgba(37,40,44,.18); font-size: 12px; font-weight: 600; pointer-events: none; transform: translateX(-50%); }
 .admin-payment-editor__toast.is-success { border-color: #b7d8c0; background: #effaf2; color: #27723e; }
 .admin-payment-editor__toast.is-error { border-color: #e7c4c0; background: #fff4f2; color: #a13f39; }
 .admin-payment-toast-enter-active, .admin-payment-toast-leave-active { transition: opacity .22s ease, transform .22s ease; }
@@ -1806,6 +1816,15 @@ select:not([multiple]) { appearance: none; -webkit-appearance: none; padding-rig
 .admin-payment-editor__webhook-form button:disabled { cursor: wait; opacity: .62; }
 .admin-payment-editor__webhook-list > p { margin: 0; color: #7d8184; font-size: 11px; }
 .admin-payment-editor__webhook-mode { display: inline-block; margin-right: 7px; color: #8a682d; font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.admin-payment-assignment-confirm { width: min(470px, 100%); border: 1px solid #e2e0db; border-radius: 8px; background: #fff; box-shadow: 0 22px 60px rgba(0,0,0,.24); }
+.admin-payment-assignment-confirm > header { display: flex; align-items: start; justify-content: space-between; gap: 18px; padding: 23px 25px; border-bottom: 1px solid #e6e5e1; }
+.admin-payment-assignment-confirm h2 { margin: 4px 0 0; color: #34383e; font-size: 21px; }
+.admin-payment-assignment-confirm > header button { display: grid; width: 31px; height: 31px; place-items: center; border: 1px solid #d7d9d6; border-radius: 4px; background: #fff; color: #666a6e; cursor: pointer; }
+.admin-payment-assignment-confirm > p { margin: 0; padding: 22px 25px 5px; color: #60656a; font-size: 13px; line-height: 1.55; }
+.admin-payment-assignment-confirm > footer { display: flex; justify-content: flex-end; gap: 9px; padding: 18px 25px 23px; }
+.admin-payment-assignment-confirm > footer button { display: inline-flex; min-height: 37px; align-items: center; justify-content: center; padding: 0 13px; border: 1px solid #d5d7d5; border-radius: 4px; background: #fff; color: #565a5e; cursor: pointer; font: 700 10px 'Century Gothic', Arial, sans-serif; }
+.admin-payment-assignment-confirm > footer button:last-child { border-color: #3b4d61; background: #3b4d61; color: #fff; }
 @media (max-width: 720px) { .admin-payments__heading { align-items: start; flex-direction: column; }.admin-payments__heading > button { width: 100%; }.admin-product-dialog-backdrop { padding: 12px; }.admin-payment-picker, .admin-payment-editor, .admin-payment-detail { max-height: calc(100svh - 24px); }.admin-payment-picker > header, .admin-payment-editor > header, .admin-payment-detail > header, .admin-payment-editor form, .admin-payment-editor__webhooks { padding-left: 16px; padding-right: 16px; }.admin-payment-editor__tabs { padding-left: 16px; }.admin-payment-editor__credentials { grid-template-columns: 1fr; }.admin-payment-editor__webhooks form { grid-template-columns: 1fr; }.admin-payment-editor__webhooks form > button { width: 100%; }.admin-payment-detail > dl { grid-template-columns: 1fr; padding-left: 16px; padding-right: 16px; }.admin-payment-detail section { padding-left: 16px; padding-right: 16px; }.admin-payments__actions { flex-direction: column; }.admin-payments__actions button { width: 100%; } }
 @media (max-width: 720px) { .admin-content--payments { padding: 36px 18px; } }
 @media (max-width: 720px) { .admin-payment-editor__webhook-form { grid-template-columns: 1fr; }.admin-payment-editor__webhook-form button { width: 100%; } }
+@media (max-width: 720px) { .admin-payment-assignment-confirm > header, .admin-payment-assignment-confirm > p, .admin-payment-assignment-confirm > footer { padding-left: 16px; padding-right: 16px; }.admin-payment-assignment-confirm > footer { flex-direction: column-reverse; }.admin-payment-assignment-confirm > footer button { width: 100%; } }

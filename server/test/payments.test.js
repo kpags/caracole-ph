@@ -5,7 +5,7 @@ import express from 'express'
 import { createPaymongoClient, PAYMONGO_PAYMENT_METHOD_TYPES } from '../src/lib/paymongo.js'
 import { decryptPaymentSecret, encryptPaymentSecret, hashPaymentAccessToken, verifyPaymongoSignature } from '../src/lib/payment-crypto.js'
 import { errorHandler } from '../src/lib/http.js'
-import { paymentWebhookRoutes, paymentsRoutes, serializeGateway, serializePayment } from '../src/routes/payments.js'
+import { assignActiveGateway, paymentWebhookRoutes, paymentsRoutes, serializeGateway, serializePayment } from '../src/routes/payments.js'
 
 const encryptionKey = Buffer.from('0123456789abcdef0123456789abcdef').toString('base64')
 
@@ -60,6 +60,46 @@ test('PayMongo credential verification uses an authenticated read-only request',
   assert.equal(request.url, 'https://api.paymongo.com/v1/webhooks')
   assert.equal(request.init.method, 'GET')
   assert.equal(request.init.headers.Authorization, `Basic ${Buffer.from('sk_test_abc:').toString('base64')}`)
+})
+
+test('an authorized pending order status includes its saved checkout link for payment resumption', async () => {
+  const token = 'a'.repeat(40)
+  const order = { orderNumber: 'CAR-RESUME', accessTokenHash: hashPaymentAccessToken(token), paymentStatus: 'PENDING', total: 25000, currencyCode: 'PHP', createdAt: new Date(), payments: [{ status: 'PENDING', checkoutUrl: 'https://checkout.paymongo.com/cs_resume' }] }
+  const app = express()
+  app.use('/api/v1/payments', paymentsRoutes({
+    prisma: { order: { async findUnique() { return order } } },
+    config: {},
+    authenticate: (_req, _res, next) => next(),
+    authorize: () => (_req, _res, next) => next()
+  }))
+  app.use(errorHandler)
+  await withServer(app, async (origin) => {
+    const response = await fetch(`${origin}/api/v1/payments/orders/CAR-RESUME/status?token=${token}`)
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.order.checkoutUrl, 'https://checkout.paymongo.com/cs_resume')
+  })
+})
+
+test('assigning an active gateway atomically replaces the previous active gateway', async () => {
+  const gateways = [{ id: 'gateway-test', isActive: true, deletedAt: null }, { id: 'gateway-live', isActive: false, deletedAt: null }]
+  const paymentGateway = {
+    async updateMany({ where, data }) {
+      for (const gateway of gateways) {
+        if (gateway.id !== where.id.not && gateway.isActive && gateway.deletedAt === null) gateway.isActive = data.isActive
+      }
+    },
+    async update({ where, data }) {
+      const gateway = gateways.find((entry) => entry.id === where.id)
+      Object.assign(gateway, data)
+      return gateway
+    }
+  }
+  const prisma = { paymentGateway, async $transaction(work) { return work({ paymentGateway }) } }
+  await assignActiveGateway(prisma, 'gateway-live', true)
+  assert.deepEqual(gateways.map((gateway) => gateway.isActive), [false, true])
+  await assignActiveGateway(prisma, 'gateway-live', false)
+  assert.deepEqual(gateways.map((gateway) => gateway.isActive), [false, false])
 })
 
 test('Test and Live webhook registrations, lists, and deletions stay isolated by credential mode', async () => {

@@ -10,6 +10,7 @@ const props = defineProps({
 })
 
 const gateways = ref([])
+const activeGateway = ref(null)
 const gatewayPagination = ref({ page: 1, limit: 10, totalItems: 0, totalPages: 0 })
 const payments = ref([])
 const paymentPagination = ref({ page: 1, limit: 10, totalItems: 0, totalPages: 0 })
@@ -22,6 +23,8 @@ const editingGateway = ref(null)
 const savingGateway = ref(false)
 const testingCredential = ref('')
 const dialogToast = ref(null)
+const activeAssignmentDialogOpen = ref(false)
+const assigningActiveGateway = ref(false)
 const editorTab = ref('credentials')
 const webhooks = ref([])
 const webhookEvents = ref([])
@@ -52,8 +55,8 @@ async function loadGateways(page = gatewayPagination.value.page) {
   loading.value = true; error.value = ''
   try {
     const response = await props.authorizedRequest(`/api/v1/payments/gateways?page=${page}&limit=10`)
-    gateways.value = response.gateways || []; gatewayPagination.value = response.pagination
-  } catch (cause) { error.value = cause.message; gateways.value = [] } finally { loading.value = false }
+    gateways.value = response.gateways || []; activeGateway.value = response.activeGateway || null; gatewayPagination.value = response.pagination
+  } catch (cause) { error.value = cause.message; gateways.value = []; activeGateway.value = null } finally { loading.value = false }
 }
 
 async function loadPayments(page = paymentPagination.value.page) {
@@ -171,8 +174,13 @@ async function removeWebhook(webhook) {
 }
 
 async function saveGateway() {
+  await persistGateway()
+}
+
+async function persistGateway() {
   savingGateway.value = true; error.value = ''; notice.value = ''
   try {
+    const isEditing = Boolean(editingGateway.value)
     const payload = { useTestMode: form.value.useTestMode, isEnabled: true, test: credentialPayload(form.value.test), live: credentialPayload(form.value.live) }
     if (!payload.live.publicKey && !payload.live.secretKey) delete payload.live
     if (!payload.test.publicKey && !payload.test.secretKey) delete payload.test
@@ -180,10 +188,39 @@ async function saveGateway() {
       ? await props.authorizedRequest(`/api/v1/payments/gateways/${editingGateway.value.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
       : await props.authorizedRequest('/api/v1/payments/gateways/paymongo', { method: 'POST', body: JSON.stringify(payload) })
     editingGateway.value = response.gateway
-    notice.value = 'PayMongo gateway integrated and active.'
+    notice.value = isEditing ? 'PayMongo gateway saved.' : 'PayMongo gateway integrated.'
     form.value.test.secretKey = ''; form.value.live.secretKey = ''
     await loadGateways(1)
   } catch (cause) { error.value = cause.message } finally { savingGateway.value = false }
+}
+
+function requestActiveGatewayAssignment() {
+  if (!editingGateway.value?.id || editingGateway.value.isActive) return
+  if (activeGateway.value?.id && activeGateway.value.id !== editingGateway.value.id) {
+    activeAssignmentDialogOpen.value = true
+    return
+  }
+  void assignActiveGateway()
+}
+
+async function assignActiveGateway() {
+  if (!editingGateway.value?.id) return
+  assigningActiveGateway.value = true; error.value = ''; notice.value = ''
+  try {
+    const response = await props.authorizedRequest(`/api/v1/payments/gateways/${editingGateway.value.id}/assign-active`, { method: 'POST' })
+    editingGateway.value = response.gateway
+    notice.value = 'PayMongo is now the active checkout gateway.'
+    await loadGateways(1)
+  } catch (cause) {
+    error.value = cause.message
+  } finally {
+    assigningActiveGateway.value = false
+  }
+}
+
+async function confirmActiveGatewayReplacement() {
+  activeAssignmentDialogOpen.value = false
+  await assignActiveGateway()
 }
 
 async function removeGateway(gateway) {
@@ -207,7 +244,7 @@ onBeforeUnmount(() => { window.clearTimeout(dialogToastTimer) })
     <template v-if="isGateways">
       <header class="admin-payments__heading"><div><p class="admin-eyebrow">Payment infrastructure</p><h2 id="payment-gateways-title">Payment Gateways</h2><p>Connect and manage secure payment providers.</p></div><button type="button" @click="openPicker"><i class="pi pi-plus" aria-hidden="true" /> Connect</button></header>
       <p v-if="notice" class="admin-payments__notice" role="status">{{ notice }}</p><p v-if="error" class="admin-payments__error" role="alert">{{ error }}</p>
-      <DataTable :value="gateways" :loading="loading" :lazy="true" paginator :rows="10" :first="(gatewayPagination.page - 1) * 10" :totalRecords="gatewayPagination.totalItems" :rowsPerPageOptions="[]" class="admin-payments__table" dataKey="id" @page="loadGateways($event.page + 1)"><template #empty><div class="admin-payments__empty">No payment gateways are connected.</div></template><template #loading><div class="admin-payments__empty">Loading gateways…</div></template><Column field="provider" header="Gateway" style="min-width: 200px"><template #body="{ data }"><span class="admin-payments__provider"><img :src="providerLogo(data.provider)" :alt="`${providerLabel(data.provider)} logo`" /><strong>{{ providerLabel(data.provider) }}</strong></span></template></Column><Column header="Status" style="min-width: 125px"><template #body="{ data }"><span class="admin-payments__status" :class="data.isEnabled ? 'admin-payments__status--paid' : 'admin-payments__status--failed'">{{ data.isEnabled ? 'Enabled' : 'Disabled' }}</span></template></Column><Column field="activeMode" header="Active Mode" style="min-width: 125px" /><Column header="Email Receipt" style="min-width: 140px"><template #body="{ data }">{{ data.credentials?.[data.activeMode?.toLowerCase()]?.sendEmailReceipt ? 'Enabled' : 'Off' }}</template></Column><Column header="Webhooks" style="min-width: 105px"><template #body="{ data }">{{ data.webhookCount }}</template></Column><Column header="Updated" style="min-width: 180px"><template #body="{ data }">{{ date(data.updatedAt) }}</template></Column><Column header="Actions" style="min-width: 150px"><template #body="{ data }"><div class="admin-payments__actions"><button type="button" @click="openEdit(data)"><i class="pi pi-pencil" aria-hidden="true" /> Edit</button><button type="button" class="is-danger" :disabled="deletingGateway" @click="removeGateway(data)"><i class="pi pi-trash" aria-hidden="true" /> Delete</button></div></template></Column></DataTable>
+      <DataTable :value="gateways" :loading="loading" :lazy="true" paginator :rows="10" :first="(gatewayPagination.page - 1) * 10" :totalRecords="gatewayPagination.totalItems" :rowsPerPageOptions="[]" class="admin-payments__table" dataKey="id" @page="loadGateways($event.page + 1)"><template #empty><div class="admin-payments__empty">No payment gateways are connected.</div></template><template #loading><div class="admin-payments__empty">Loading gateways…</div></template><Column field="provider" header="Gateway" style="min-width: 200px"><template #body="{ data }"><div class="admin-payments__gateway-cell" :class="{ 'is-active': data.isActive }"><span class="admin-payments__provider"><img :src="providerLogo(data.provider)" :alt="`${providerLabel(data.provider)} logo`" /><strong>{{ providerLabel(data.provider) }}</strong><small v-if="data.isActive">Active checkout gateway</small></span></div></template></Column><Column header="Status" style="min-width: 125px"><template #body="{ data }"><span class="admin-payments__status" :class="data.isEnabled ? 'admin-payments__status--paid' : 'admin-payments__status--failed'">{{ data.isEnabled ? 'Enabled' : 'Disabled' }}</span></template></Column><Column field="activeMode" header="Active Mode" style="min-width: 125px" /><Column header="Email Receipt" style="min-width: 140px"><template #body="{ data }">{{ data.credentials?.[data.activeMode?.toLowerCase()]?.sendEmailReceipt ? 'Enabled' : 'Off' }}</template></Column><Column header="Webhooks" style="min-width: 105px"><template #body="{ data }">{{ data.webhookCount }}</template></Column><Column header="Updated" style="min-width: 180px"><template #body="{ data }">{{ date(data.updatedAt) }}</template></Column><Column header="Actions" style="min-width: 150px"><template #body="{ data }"><div class="admin-payments__actions"><button type="button" @click="openEdit(data)"><i class="pi pi-pencil" aria-hidden="true" /> Edit</button><button type="button" class="is-danger" :disabled="deletingGateway" @click="removeGateway(data)"><i class="pi pi-trash" aria-hidden="true" /> Delete</button></div></template></Column></DataTable>
     </template>
     <template v-else>
       <header class="admin-payments__heading"><div><p class="admin-eyebrow">Transaction record</p><h2 id="payments-title">Payments</h2><p>Payment attempts and verified PayMongo results.</p></div></header><p v-if="error" class="admin-payments__error" role="alert">{{ error }}</p>
@@ -219,7 +256,7 @@ onBeforeUnmount(() => { window.clearTimeout(dialogToastTimer) })
 
   <Teleport to="body">
     <Transition name="admin-dialog-fade">
-      <div v-if="editorOpen" class="admin-product-dialog-backdrop" @click.self="!savingGateway && (editorOpen = false)">
+      <div v-if="editorOpen" class="admin-product-dialog-backdrop" @click.self="!savingGateway && !assigningActiveGateway && (editorOpen = false)">
         <section class="admin-payment-editor" role="dialog" aria-modal="true">
           <Transition name="admin-payment-toast">
             <p v-if="dialogToast" class="admin-payment-editor__toast" :class="`is-${dialogToast.type}`" role="status">{{ dialogToast.message }}</p>
@@ -230,7 +267,7 @@ onBeforeUnmount(() => { window.clearTimeout(dialogToastTimer) })
               <h2>{{ editorTitle }}</h2>
               <p>PayMongo credentials stay encrypted and are never shown again.</p>
             </div>
-            <button type="button" aria-label="Close" :disabled="savingGateway" @click="editorOpen = false"><i class="pi pi-times" /></button>
+            <button type="button" aria-label="Close" :disabled="savingGateway || assigningActiveGateway" @click="editorOpen = false"><i class="pi pi-times" /></button>
           </header>
           <nav v-if="editingGateway" class="admin-payment-editor__tabs" aria-label="Payment gateway settings">
             <button type="button" :class="{ 'is-active': editorTab === 'credentials' }" @click="selectEditorTab('credentials')">Credentials</button>
@@ -259,8 +296,9 @@ onBeforeUnmount(() => { window.clearTimeout(dialogToastTimer) })
               <p v-if="error" class="admin-payments__error" role="alert">{{ error }}</p>
               <p v-if="notice" class="admin-payments__notice" role="status">{{ notice }}</p>
               <footer>
-                <button type="button" :disabled="savingGateway" @click="editorOpen = false">Cancel</button>
-                <button type="submit" :disabled="savingGateway"><i v-if="savingGateway" class="pi pi-spinner pi-spin" /> {{ savingGateway ? 'Integrating…' : 'Integrate' }}</button>
+                <button type="button" :disabled="savingGateway || assigningActiveGateway" @click="editorOpen = false">Cancel</button>
+                <button v-if="editingGateway" type="button" class="admin-payment-editor__assign-active" :disabled="savingGateway || assigningActiveGateway || editingGateway.isActive" @click="requestActiveGatewayAssignment"><i v-if="assigningActiveGateway" class="pi pi-spinner pi-spin" /> {{ editingGateway.isActive ? 'Already Assigned' : (assigningActiveGateway ? 'Assigning…' : 'Assign as Active Gateway') }}</button>
+                <button type="submit" :disabled="savingGateway"><i v-if="savingGateway" class="pi pi-spinner pi-spin" /> {{ savingGateway ? (editingGateway ? 'Saving…' : 'Integrating…') : (editingGateway ? 'Save' : 'Integrate') }}</button>
               </footer>
             </template>
             <section v-else class="admin-payment-editor__webhooks" aria-label="PayMongo webhooks">
@@ -284,6 +322,8 @@ onBeforeUnmount(() => { window.clearTimeout(dialogToastTimer) })
       </div>
     </Transition>
   </Teleport>
+
+  <Teleport to="body"><Transition name="admin-dialog-fade"><div v-if="activeAssignmentDialogOpen" class="admin-product-dialog-backdrop" @click.self="!assigningActiveGateway && (activeAssignmentDialogOpen = false)"><section class="admin-payment-assignment-confirm" role="dialog" aria-modal="true" aria-labelledby="replace-active-gateway-title"><header><div><p class="admin-eyebrow">Active payment gateway</p><h2 id="replace-active-gateway-title">Replace {{ providerLabel(activeGateway?.provider) }}?</h2></div><button type="button" aria-label="Close" :disabled="assigningActiveGateway" @click="activeAssignmentDialogOpen = false"><i class="pi pi-times" /></button></header><p><strong>{{ providerLabel(activeGateway?.provider) }}</strong> is currently used for checkout. Continuing will assign PayMongo as the active checkout gateway.</p><footer><button type="button" :disabled="assigningActiveGateway" @click="activeAssignmentDialogOpen = false">Cancel</button><button type="button" :disabled="assigningActiveGateway" @click="confirmActiveGatewayReplacement"><i v-if="assigningActiveGateway" class="pi pi-spinner pi-spin" /> {{ assigningActiveGateway ? 'Assigning…' : 'Replace Gateway' }}</button></footer></section></div></Transition></Teleport>
 
   <Teleport to="body"><Transition name="admin-dialog-fade"><div v-if="paymentDetailOpen" class="admin-product-dialog-backdrop" @click.self="paymentDetailOpen = false"><section class="admin-payment-detail" role="dialog" aria-modal="true"><header><div><p class="admin-eyebrow">Payment detail</p><h2>{{ selectedPayment?.orderNumber || 'Loading payment…' }}</h2></div><button type="button" aria-label="Close" @click="paymentDetailOpen = false"><i class="pi pi-times" /></button></header><div v-if="loadingPayment" class="admin-payments__empty"><i class="pi pi-spinner pi-spin" /> Loading payment…</div><template v-else-if="selectedPayment"><dl><div><dt>Status</dt><dd><span class="admin-payments__status" :class="statusClass(selectedPayment.status)">{{ selectedPayment.status }}</span></dd></div><div><dt>Total</dt><dd>{{ money(selectedPayment.amount, selectedPayment.currencyCode) }}</dd></div><div><dt>Checkout Session</dt><dd>{{ selectedPayment.providerCheckoutSessionId || '--' }}</dd></div><div><dt>Payment ID</dt><dd>{{ selectedPayment.providerPaymentId || '--' }}</dd></div><div><dt>Method</dt><dd>{{ selectedPayment.paymentMethod || '--' }}</dd></div><div><dt>Paid At</dt><dd>{{ date(selectedPayment.paidAt) }}</dd></div></dl><section><h3>Payment attempts</h3><article v-for="attempt in selectedPayment.attempts" :key="attempt.id"><span>{{ attempt.paymentMethod || 'PayMongo attempt' }}</span><strong>{{ attempt.status }}</strong><small>{{ attempt.providerPaymentId || attempt.providerPaymentIntentId || '--' }}</small></article><p v-if="!selectedPayment.attempts.length">No provider attempts recorded yet.</p></section><section><h3>Webhook audit</h3><article v-for="log in selectedPayment.webhookLogs" :key="log.id"><span>{{ log.eventType || 'Unknown event' }}</span><strong>{{ log.signatureVerified ? 'Verified' : 'Rejected' }}</strong><small>{{ date(log.createdAt) }}{{ log.processingError ? ` · ${log.processingError}` : '' }}</small></article><p v-if="!selectedPayment.webhookLogs.length">No webhook deliveries are linked yet.</p></section></template><p v-else class="admin-payments__error">{{ error || 'Payment could not be loaded.' }}</p></section></div></Transition></Teleport>
 </template>

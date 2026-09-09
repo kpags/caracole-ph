@@ -466,6 +466,7 @@ model PaymentGateway {
   deletedAt   DateTime?              @map("deleted_at") @db.Timestamptz(6)
   provider    PaymentGatewayProvider @unique
   isEnabled   Boolean                @default(true) @map("is_enabled")
+  isActive    Boolean                @default(false) @map("is_active")
   useTestMode Boolean                @default(true) @map("use_test_mode")
   credentials PaymentGatewayCredential[]
   webhooks    PaymentGatewayWebhook[]
