@@ -3,6 +3,7 @@ import express from 'express'
 import jwt from 'jsonwebtoken'
 import { authRoutes } from './routes/auth.js'
 import { heroBannersRoutes } from './routes/hero-banners.js'
+import { testimonialsRoutes } from './routes/testimonials.js'
 import { shopTheLookRoutes } from './routes/shop-the-look.js'
 import { usersRoutes } from './routes/users.js'
 import { productsRoutes } from './routes/products.js'
@@ -53,6 +54,7 @@ export function createApp({ prisma, config, auth, mailer, storage, products, fet
   }))
   app.use('/api/v1/auth', authRoutes({ prisma, config, auth, mailer, shopifyCustomers: createShopifyCustomerService(config) }))
   app.use('/api/v1/hero-banners', heroBannersRoutes({ prisma, storage, authenticate, authorize }))
+  app.use('/api/v1/testimonials', testimonialsRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/shop-the-look', shopTheLookRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/content', contentDisplaysRoutes({ prisma, storage, authenticate, authorize }))
   app.use('/api/v1/users', usersRoutes({ prisma, config, mailer, authenticate, authorize }))

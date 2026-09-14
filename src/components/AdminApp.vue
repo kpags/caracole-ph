@@ -9,6 +9,7 @@ import AdminContentManager from "./AdminContentManager.vue";
 import AdminShowroomManager from "./AdminShowroomManager.vue";
 import AdminEmailingManager from "./AdminEmailingManager.vue";
 import AdminPaymentsManager from "./AdminPaymentsManager.vue";
+import AdminTestimonialsManager from "./AdminTestimonialsManager.vue";
 import { brandLogoUrl } from "../data/brand-logos.js";
 
 const ADMIN_VIEW_STORAGE_KEY = "caracole-admin-view";
@@ -17,6 +18,7 @@ const isAdminInvitationSetup = /^\/admin\/setup-password\/?$/.test(window.locati
 const adminInvitationToken = new URLSearchParams(window.location.search).get("token") || "";
 const contentSectionIds = {
   "Hero Banners": "hero-banners",
+  "Testimonials": "testimonials",
   "Shop the Look": "shop-the-look",
   "Main Categories Display": "main-categories-display",
   "Content Designers": "content-designers",
@@ -42,6 +44,7 @@ const activeContentLink = ref(storedAdminView.activeContentLink);
 const orderedGroups = [
   { title: "Contents", icon: "pi pi-flag", items: [
     { key: "Hero Banners", label: "Hero Banners" },
+    { key: "Testimonials", label: "Testimonials" },
     { key: "Shop the Look", label: "Shop the Look" },
     { key: "Main Categories Display", label: "Main Categories Display" },
     { key: "Content Designers", label: "Designers" },
@@ -294,7 +297,7 @@ function getStoredAdminView() {
   const fallback = { active: "Hero Banners", activeContentLink: "Hero Banners", expanded: { Contents: true, Carts: false, Users: false, Inquiries: false, Emailing: false, Payments: false } };
   try {
     const value = JSON.parse(sessionStorage.getItem(ADMIN_VIEW_STORAGE_KEY) || "null");
-    const allowedItems = ["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display", "Products", "Registered Carts", "Guest Carts", "Appointments", "General", "Product", "Email General Inquiry", "Email Product Inquiry", "Email Designer Registration", "Payment Gateways", "Payments", "Newsletter", "Admin", "Registered Designers", "Customers"];
+    const allowedItems = ["Hero Banners", "Testimonials", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display", "Products", "Registered Carts", "Guest Carts", "Appointments", "General", "Product", "Email General Inquiry", "Email Product Inquiry", "Email Designer Registration", "Payment Gateways", "Payments", "Newsletter", "Admin", "Registered Designers", "Customers"];
     if (value?.active === "Designers") value.active = "Registered Designers";
     if (value?.activeContentLink === "Designers") value.activeContentLink = "Registered Designers";
     if (value?.active === "Session Carts") value.active = "Guest Carts";
@@ -351,7 +354,7 @@ function select(item) {
   }
   active.value = item;
   activeContentLink.value = item;
-  if (["Hero Banners", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display"].includes(item)) expanded.value.Contents = true;
+  if (["Hero Banners", "Testimonials", "Shop the Look", "Main Categories Display", "Content Designers", "Showroom Display"].includes(item)) expanded.value.Contents = true;
   if (["Admin", "Registered Designers", "Customers"].includes(item)) expanded.value.Users = true;
   if (["Registered Carts", "Guest Carts"].includes(item)) expanded.value.Carts = true;
   if (["Payment Gateways", "Payments"].includes(item)) expanded.value.Payments = true;
@@ -1972,6 +1975,7 @@ function showLogin() {
           <AdminContentManager section="main-categories" section-id="main-categories-display" :authorized-request="authorizedRequest" />
           <AdminContentManager section="designer-profiles" section-id="content-designers" :authorized-request="authorizedRequest" />
           <AdminShowroomManager :authorized-request="authorizedRequest" />
+          <AdminTestimonialsManager :api-base-url="apiBaseUrl" />
 
           <Teleport to="body">
             <Transition name="admin-dialog-fade">
