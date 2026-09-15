@@ -108,6 +108,13 @@ img, video { display: block; width: 100%; }
 .header-designer-link::before { content: ''; position: absolute; z-index: 1; left: -8%; bottom: -12px; width: 116%; height: 160%; border-radius: 48% 52% 0 0 / 22% 26% 0 0; background: white; transform: translateY(112%) rotate(-3deg); transform-origin: bottom center; transition: transform .72s cubic-bezier(.22,.78,.24,1), border-radius .72s ease; }
 .header-designer-link:hover, .header-designer-link:focus-visible { border-color: white; color: #111; outline: none; }
 .header-designer-link:hover::before, .header-designer-link:focus-visible::before { border-radius: 8% 8% 0 0 / 5% 5% 0 0; transform: translateY(0) rotate(0deg); }
+/* Light headers invert the hover fill so the active navigation item remains unmistakable. */
+.header--light .header-link:not(.header-designer-link)::before, .header.menu-active .header-link:not(.header-designer-link)::before,
+.header--light .header-designer-link::before, .header.menu-active .header-designer-link::before { background: var(--ink); }
+.header--light .header-link:not(.header-designer-link):hover, .header--light .header-link:not(.header-designer-link):focus-visible,
+.header.menu-active .header-link:not(.header-designer-link):hover, .header.menu-active .header-link:not(.header-designer-link):focus-visible,
+.header--light .header-designer-link:hover, .header--light .header-designer-link:focus-visible,
+.header.menu-active .header-designer-link:hover, .header.menu-active .header-designer-link:focus-visible { border-color: var(--ink); color: #fff; }
 .menu-toggle, .user-button, .cart-button { position: relative; isolation: isolate; overflow: hidden; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; transition: color .38s ease, box-shadow .38s ease; }
 .menu-toggle::before, .user-button::before, .cart-button::before { content: ''; position: absolute; z-index: 1; left: -12%; bottom: -9px; width: 124%; height: 155%; border-radius: 48% 52% 0 0 / 25% 30% 0 0; background: white; transform: translateY(115%) rotate(-5deg); transition: transform .68s cubic-bezier(.22,.78,.24,1), border-radius .68s ease; }
 .menu-toggle:hover, .menu-toggle:focus-visible, .user-button:hover, .user-button:focus-visible, .cart-button:hover, .cart-button:focus-visible { color: #111; box-shadow: 0 0 0 1px rgba(26,26,24,.12); outline: none; }
@@ -1155,10 +1162,10 @@ body.modal-scroll-lock { overflow: hidden; }
 .testimonial-film > span { position: absolute; z-index: 1; left: 38px; bottom: 32px; font-size: 8px; letter-spacing: .19em; }
 .testimonial-quote { display: flex; flex-direction: column; justify-content: center; padding: 76px clamp(38px, 4.7vw, 90px); background: #272620; }
 .testimonial-quote > .eyebrow { color: var(--champagne); }
-.testimonial-quote blockquote { margin: 48px 0 36px; font: clamp(38px, 3.1vw, 59px)/.98 var(--serif); letter-spacing: -.025em; }
+.testimonial-quote blockquote { max-width: 15.5ch; margin: 48px 0 36px; font: clamp(31px, 2.6vw, 50px)/1.16 var(--sans); letter-spacing: -.018em; }
 .testimonial-quote > p:not(.eyebrow) { max-width: 470px; margin: 0; color: rgba(255,255,255,.7); font-size: 11px; line-height: 1.85; }
 .testimonial-quote footer { display: grid; gap: 5px; margin-top: 48px; }
-.testimonial-quote footer strong { font: 23px var(--serif); font-weight: 400; }
+.testimonial-quote footer strong { font: 22px/1.2 var(--sans); font-weight: 400; }
 .testimonial-quote footer span, .testimonial-quote > small { color: rgba(255,255,255,.48); font-size: 7px; text-transform: uppercase; letter-spacing: .17em; }
 .testimonial-progress { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin: 58px 0 14px; }
 .testimonial-progress > button { position: relative; height: 18px; overflow: hidden; padding: 0; border: 0; background: transparent; cursor: pointer; }
@@ -1364,7 +1371,7 @@ body.modal-scroll-lock { overflow: hidden; }
   .testimonial-film { min-height: 520px; }
   .testimonial-film > span { left: 20px; bottom: 20px; }
   .testimonial-quote { min-height: 570px; }
-  .testimonial-quote blockquote { margin-top: 38px; font-size: 39px; }
+  .testimonial-quote blockquote { margin-top: 38px; font-size: 34px; }
   .testimonials-closing h2 { font-size: 57px; }
   .look-pin__card { width: 170px; padding: 15px; }
   .look-pin__card strong { font-size: 18px; }

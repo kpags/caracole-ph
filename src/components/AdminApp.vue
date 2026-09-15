@@ -44,11 +44,11 @@ const activeContentLink = ref(storedAdminView.activeContentLink);
 const orderedGroups = [
   { title: "Contents", icon: "pi pi-flag", items: [
     { key: "Hero Banners", label: "Hero Banners" },
-    { key: "Testimonials", label: "Testimonials" },
     { key: "Shop the Look", label: "Shop the Look" },
     { key: "Main Categories Display", label: "Main Categories Display" },
     { key: "Content Designers", label: "Designers" },
     { key: "Showroom Display", label: "Showroom Display" },
+    { key: "Testimonials", label: "Testimonials" },
   ] },
   { title: "Products", icon: "pi pi-list", items: [] },
   {

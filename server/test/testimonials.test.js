@@ -67,6 +67,12 @@ function testimonialForm(position = 0) {
   return form
 }
 
+function testimonialUpdateForm() {
+  const form = testimonialForm()
+  form.delete('position')
+  return form
+}
+
 test('creates and publicly returns ordered testimonials', async () => {
   await withServer(async ({ url, records }) => {
     const create = await fetch(url, { method: 'POST', body: testimonialForm() })
@@ -80,16 +86,21 @@ test('creates and publicly returns ordered testimonials', async () => {
   })
 })
 
-test('replaces media, removes old Cloudflare content, and accepts reorder', async () => {
+test('replaces media, removes old Cloudflare content, and swaps two saved testimonial positions', async () => {
   await withServer(async ({ url, deleted }) => {
     await fetch(url, { method: 'POST', body: testimonialForm(0) })
     await fetch(url, { method: 'POST', body: testimonialForm(1) })
-    const update = await fetch(`${url}/${ids[0]}`, { method: 'PATCH', body: testimonialForm(0) })
+    const positionUpdate = testimonialUpdateForm()
+    positionUpdate.append('position', '1')
+    assert.equal((await fetch(`${url}/${ids[0]}`, { method: 'PATCH', body: positionUpdate })).status, 400)
+
+    const update = await fetch(`${url}/${ids[0]}`, { method: 'PATCH', body: testimonialUpdateForm() })
     assert.equal(update.status, 200)
     assert.equal(deleted.length, 1)
-    const reorder = await fetch(`${url}/reorder`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [ids[1], ids[0]] }) })
+    const reorder = await fetch(`${url}/reorder`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: ids[0], targetId: ids[1] }) })
     assert.equal(reorder.status, 200)
     assert.deepEqual((await reorder.json()).testimonials.map((item) => item.id), [ids[1], ids[0]])
+    assert.equal((await fetch(`${url}/reorder`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: ids[0], targetId: '33333333-3333-4333-8333-333333333333' }) })).status, 404)
     const removal = await fetch(`${url}/${ids[1]}`, { method: 'DELETE' })
     assert.equal(removal.status, 204)
     assert.equal(deleted.length, 2)

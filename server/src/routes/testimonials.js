@@ -81,13 +81,19 @@ export function testimonialsRoutes({ prisma, storage, authenticate, authorize, i
   }))
 
   router.patch('/reorder', asyncRoute(async (req, res) => {
-    const { ids } = z.object({ ids: z.array(z.string().uuid()).min(1).max(MAX_TESTIMONIALS) }).strict().parse(req.body)
-    if (new Set(ids).size !== ids.length) throw new HttpError(400, 'Testimonial ids must be unique')
-    const existing = await prisma.testimonial.findMany({ select: { id: true } })
-    if (existing.length !== ids.length || existing.some((item) => !ids.includes(item.id))) throw new HttpError(400, 'Testimonial order must include every saved testimonial')
+    const { sourceId, targetId } = z.object({ sourceId: z.string().uuid(), targetId: z.string().uuid() }).strict().parse(req.body)
+    if (sourceId === targetId) throw new HttpError(400, 'Choose two different testimonials to swap')
+    const [source, target] = await Promise.all([
+      prisma.testimonial.findUnique({ where: { id: sourceId } }),
+      prisma.testimonial.findUnique({ where: { id: targetId } })
+    ])
+    if (!source || !target) throw new HttpError(404, 'Both testimonials must exist before their positions can be swapped')
+    const sourcePosition = source.position
+    const targetPosition = target.position
     await prisma.$transaction([
-      prisma.testimonial.updateMany({ data: { position: { increment: MAX_TESTIMONIALS + 1 } } }),
-      ...ids.map((id, position) => prisma.testimonial.update({ where: { id }, data: { position } }))
+      prisma.testimonial.update({ where: { id: source.id }, data: { position: sourcePosition + MAX_TESTIMONIALS + 1 } }),
+      prisma.testimonial.update({ where: { id: target.id }, data: { position: sourcePosition } }),
+      prisma.testimonial.update({ where: { id: source.id }, data: { position: targetPosition } })
     ])
     const testimonials = await prisma.testimonial.findMany({ orderBy: { position: 'asc' } })
     res.json({ testimonials: testimonials.map(serialize) })
@@ -99,12 +105,8 @@ export function testimonialsRoutes({ prisma, storage, authenticate, authorize, i
     if (!existing) throw new HttpError(404, 'Testimonial not found')
     const body = z.object({
       name: fields.name.optional(), designation: fields.designation.optional(), mainTestimony: fields.mainTestimony.optional(),
-      subTestimony: fields.subTestimony.optional(), position: fields.position.optional()
+      subTestimony: fields.subTestimony.optional()
     }).strict().refine((value) => Object.keys(value).length > 0 || Boolean(req.file), 'Provide a testimonial update').parse(req.body)
-    if (body.position !== undefined && body.position !== existing.position) {
-      const occupied = await prisma.testimonial.findUnique({ where: { position: body.position }, select: { id: true } })
-      if (occupied) throw new HttpError(409, `Testimonial position ${body.position + 1} is already in use`)
-    }
     const uploaded = req.file ? await uploadMedia(storage, req.file, inspectMedia) : null
     try {
       const testimonial = await prisma.testimonial.update({

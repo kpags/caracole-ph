@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || import.meta.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')
 const stories = ref([])
@@ -9,11 +9,37 @@ const currentIndex = ref(0)
 const videoElement = ref(null)
 const progress = ref(0)
 const activeStory = computed(() => stories.value[currentIndex.value] || null)
+const IMAGE_SHOWCASE_DURATION = 5000
+let imageAdvanceFrame = null
 
-function playNext() {
+function clearImageAdvance() {
+  if (imageAdvanceFrame !== null) window.cancelAnimationFrame(imageAdvanceFrame)
+  imageAdvanceFrame = null
+}
+
+function playNext({ loop = true } = {}) {
   if (!stories.value.length) return
   progress.value = 0
-  currentIndex.value = (currentIndex.value + 1) % stories.value.length
+  const nextIndex = currentIndex.value + 1
+  if (nextIndex < stories.value.length) currentIndex.value = nextIndex
+  else if (loop) currentIndex.value = 0
+}
+
+function scheduleImageAdvance() {
+  clearImageAdvance()
+  if (activeStory.value?.mediaType === 'video' || currentIndex.value >= stories.value.length - 1) return
+  const startedAt = performance.now()
+  const update = (now) => {
+    const elapsed = now - startedAt
+    progress.value = Math.min(100, (elapsed / IMAGE_SHOWCASE_DURATION) * 100)
+    if (elapsed >= IMAGE_SHOWCASE_DURATION) {
+      imageAdvanceFrame = null
+      playNext({ loop: false })
+      return
+    }
+    imageAdvanceFrame = window.requestAnimationFrame(update)
+  }
+  imageAdvanceFrame = window.requestAnimationFrame(update)
 }
 
 function updateProgress(event) {
@@ -30,6 +56,8 @@ async function selectSlide(index) {
   if (videoElement.value) {
     videoElement.value.currentTime = 0
     await videoElement.value.play().catch(() => {})
+  } else {
+    scheduleImageAdvance()
   }
 }
 
@@ -50,14 +78,20 @@ async function loadTestimonials() {
   }
 }
 
-watch(currentIndex, async () => {
+watch(activeStory, async (story) => {
+  clearImageAdvance()
+  progress.value = 0
   await nextTick()
-  if (activeStory.value?.mediaType !== 'video') return
-  videoElement.value?.load()
-  videoElement.value?.play().catch(() => {})
+  if (story?.mediaType === 'video') {
+    videoElement.value?.load()
+    videoElement.value?.play().catch(() => {})
+    return
+  }
+  if (story) scheduleImageAdvance()
 })
 
 onMounted(() => { void loadTestimonials() })
+onBeforeUnmount(clearImageAdvance)
 </script>
 
 <template>
@@ -111,9 +145,9 @@ onMounted(() => { void loadTestimonials() })
             :aria-label="`Show testimonial from ${story.name}`"
             :aria-current="index === currentIndex ? 'true' : undefined"
             @click="selectSlide(index)"
-          ><i :style="index === currentIndex && activeStory.mediaType === 'video' ? { width: `${progress}%` } : null"></i></button>
+          ><i :style="index === currentIndex ? { width: `${progress}%` } : null"></i></button>
         </div>
-        <small>Choose a chapter or let each story continue when the film ends.</small>
+        <small>Choose a chapter, or let images advance after five seconds and films continue when they end.</small>
       </article>
     </section>
 

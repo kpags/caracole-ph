@@ -85,13 +85,7 @@ export async function inspectTestimonialMedia(file) {
 }
 
 export function validateTestimonialMediaDetails(details) {
-  const { width, height, type, duration } = details || {}
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1920 || height < 1080) {
-    throw new HttpError(400, 'Testimonial media must be at least 1920 × 1080 pixels')
-  }
-  if (Math.abs((width / height) - (16 / 9)) > 0.015) {
-    throw new HttpError(400, 'Testimonial media must use a 16:9 aspect ratio')
-  }
+  const { type, duration } = details || {}
   if (type === 'video' && (!Number.isFinite(duration) || duration > 10)) {
     throw new HttpError(400, 'Testimonial videos must be 10 seconds or shorter')
   }

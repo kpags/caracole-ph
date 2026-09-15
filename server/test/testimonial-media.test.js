@@ -10,13 +10,11 @@ function png(width, height) {
   return buffer
 }
 
-test('reads PNG dimensions and accepts a compliant 16:9 testimonial image', () => {
+test('reads image dimensions while accepting testimonial images of any dimensions', () => {
   assert.deepEqual(inspectTestimonialImage(png(1920, 1080), 'image/png'), { width: 1920, height: 1080 })
-  assert.doesNotThrow(() => validateTestimonialMediaDetails({ type: 'image', width: 1920, height: 1080 }))
+  assert.doesNotThrow(() => validateTestimonialMediaDetails({ type: 'image', width: 640, height: 1280 }))
 })
 
-test('rejects undersized, non-16:9, and overlong testimonial media', () => {
-  assert.throws(() => validateTestimonialMediaDetails({ type: 'image', width: 1600, height: 900 }), /1920/)
-  assert.throws(() => validateTestimonialMediaDetails({ type: 'image', width: 1920, height: 1200 }), /16:9/)
+test('continues to reject overlong testimonial videos', () => {
   assert.throws(() => validateTestimonialMediaDetails({ type: 'video', width: 1920, height: 1080, duration: 10.01 }), /10 seconds/)
 })
