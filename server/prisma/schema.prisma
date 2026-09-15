@@ -250,6 +250,23 @@ model HeroBanner {
   @@map("hero_banners")
 }
 
+model Testimonial {
+  id              String   @id @default(uuid()) @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  name            String   @db.VarChar(160)
+  designation     String   @db.VarChar(120)
+  mainTestimony   String   @map("main_testimony") @db.VarChar(150)
+  subTestimony    String   @map("sub_testimony") @db.VarChar(100)
+  mediaContent    String   @map("media_content")
+  mediaType       String   @map("media_type") @db.VarChar(10)
+  mediaFileName   String   @map("media_file_name") @db.VarChar(255)
+  position        Int      @unique
+
+  @@index([position])
+  @@map("testimonials")
+}
+
 model ShopTheLookEnvironment {
   id            String   @id @default(uuid()) @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

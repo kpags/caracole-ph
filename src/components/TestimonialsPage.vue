@@ -1,45 +1,19 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
-import joseOne from '../../assets/testimonials/jose_chan/video_1.mp4'
-import joseTwo from '../../assets/testimonials/jose_chan/video_2.mp4'
-import mariaOne from '../../assets/testimonials/maria_chan/video_1.mp4'
-import mariaTwo from '../../assets/testimonials/maria_chan/video_2.mp4'
-import coupleOne from '../../assets/testimonials/mr_and_mrs_chan/video_1.mp4'
-import coupleTwo from '../../assets/testimonials/mr_and_mrs_chan/video_2.mp4'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
-const stories = [
-  {
-    name: 'Jose Chan',
-    role: 'Caracole PH Client',
-    quote: '“Caracole transformed the room into something expressive, comfortable, and unmistakably ours.”',
-    copy: 'Every silhouette feels considered, from the sculptural forms to the finishes that catch the light. The quality is felt every day, not only seen.',
-    videos: [joseOne, joseTwo],
-  },
-  {
-    name: 'Maria Chan',
-    role: 'Caracole PH Client',
-    quote: '“The collection brings the polish of a beautiful hotel into a home that still feels completely personal.”',
-    copy: 'Caracole made it easy to layer statement pieces with warmth and ease. The result is refined, welcoming, and made for real life.',
-    videos: [mariaOne, mariaTwo],
-  },
-  {
-    name: 'Mr. & Mrs. Chan',
-    role: 'Caracole PH Clients',
-    quote: '“We wanted rooms that felt collected over time. Caracole gave us that sense of character from the very first piece.”',
-    copy: 'The craftsmanship, comfort, and thoughtful proportions made every choice feel lasting. Our home now feels complete without ever feeling overdone.',
-    videos: [coupleOne, coupleTwo],
-  },
-]
-
-const slides = stories.flatMap((story) => story.videos.map((video, chapter) => ({ ...story, video, chapter })))
+const apiBaseUrl = (import.meta.env.VITE_API_URL || import.meta.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')
+const stories = ref([])
+const isLoading = ref(true)
+const loadError = ref('')
 const currentIndex = ref(0)
 const videoElement = ref(null)
 const progress = ref(0)
-const activeStory = computed(() => slides[currentIndex.value])
+const activeStory = computed(() => stories.value[currentIndex.value] || null)
 
 function playNext() {
+  if (!stories.value.length) return
   progress.value = 0
-  currentIndex.value = (currentIndex.value + 1) % slides.length
+  currentIndex.value = (currentIndex.value + 1) % stories.value.length
 }
 
 function updateProgress(event) {
@@ -53,18 +27,37 @@ async function selectSlide(index) {
     currentIndex.value = index
     return
   }
-
   if (videoElement.value) {
     videoElement.value.currentTime = 0
     await videoElement.value.play().catch(() => {})
   }
 }
 
+async function loadTestimonials() {
+  isLoading.value = true
+  loadError.value = ''
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/testimonials`)
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(body.message || 'Unable to load testimonials.')
+    stories.value = body.testimonials || []
+    currentIndex.value = 0
+  } catch (error) {
+    stories.value = []
+    loadError.value = error.message || 'Unable to load testimonials.'
+  } finally {
+    isLoading.value = false
+  }
+}
+
 watch(currentIndex, async () => {
   await nextTick()
+  if (activeStory.value?.mediaType !== 'video') return
   videoElement.value?.load()
   videoElement.value?.play().catch(() => {})
 })
+
+onMounted(() => { void loadTestimonials() })
 </script>
 
 <template>
@@ -75,46 +68,50 @@ watch(currentIndex, async () => {
       <p>Step inside spaces shaped by Caracole and hear from the people who live with every considered detail.</p>
     </section>
 
-    <section class="testimonial-carousel" aria-live="polite" :aria-label="`Testimonial from ${activeStory.name}`">
+    <section v-if="isLoading" class="testimonials-empty" aria-live="polite">
+      <p class="eyebrow">In their words</p>
+      <h2>Loading testimonials…</h2>
+    </section>
+
+    <section v-else-if="!activeStory" class="testimonials-empty" aria-live="polite">
+      <p class="eyebrow">In their words</p>
+      <h2>{{ loadError ? 'Testimonials are unavailable.' : 'No testimonials yet.' }}</h2>
+      <button v-if="loadError" type="button" @click="loadTestimonials">Try again</button>
+    </section>
+
+    <section v-else class="testimonial-carousel" aria-live="polite" :aria-label="`Testimonial from ${activeStory.name}`">
       <div class="testimonial-film">
         <video
+          v-if="activeStory.mediaType === 'video'"
           ref="videoElement"
-          :key="activeStory.video"
-          :src="activeStory.video"
-          autoplay
-          muted
-          playsinline
-          preload="metadata"
-          tabindex="-1"
-          aria-hidden="true"
-          @ended="playNext"
-          @timeupdate="updateProgress"
-          @contextmenu.prevent
+          :key="activeStory.mediaContent"
+          :src="activeStory.mediaContent"
+          autoplay muted playsinline preload="metadata" tabindex="-1" aria-hidden="true"
+          @ended="playNext" @timeupdate="updateProgress" @contextmenu.prevent
         ></video>
+        <img v-else :src="activeStory.mediaContent" :alt="`${activeStory.name} testimonial`" />
         <div class="testimonial-film__shade"></div>
-        <span>{{ String(currentIndex + 1).padStart(2, '0') }} / {{ String(slides.length).padStart(2, '0') }}</span>
+        <span>{{ String(currentIndex + 1).padStart(2, '0') }} / {{ String(stories.length).padStart(2, '0') }}</span>
       </div>
 
       <article class="testimonial-quote">
         <p class="eyebrow">In their words</p>
-        <blockquote>{{ activeStory.quote }}</blockquote>
-        <p>{{ activeStory.copy }}</p>
+        <blockquote>“{{ activeStory.mainTestimony }}”</blockquote>
+        <p>{{ activeStory.subTestimony }}</p>
         <footer>
           <strong>{{ activeStory.name }}</strong>
-          <span>{{ activeStory.role }}</span>
+          <span>{{ activeStory.designation }}</span>
         </footer>
         <div class="testimonial-progress" role="group" aria-label="Choose a testimonial">
           <button
-            v-for="(slide, index) in slides"
-            :key="`${slide.name}-${slide.chapter}`"
+            v-for="(story, index) in stories"
+            :key="story.id"
             type="button"
             :class="{ past: index < currentIndex, active: index === currentIndex }"
-            :aria-label="`Play ${slide.name} testimonial, film ${slide.chapter + 1}`"
+            :aria-label="`Show testimonial from ${story.name}`"
             :aria-current="index === currentIndex ? 'true' : undefined"
             @click="selectSlide(index)"
-          >
-            <i :style="index === currentIndex ? { width: `${progress}%` } : null"></i>
-          </button>
+          ><i :style="index === currentIndex && activeStory.mediaType === 'video' ? { width: `${progress}%` } : null"></i></button>
         </div>
         <small>Choose a chapter or let each story continue when the film ends.</small>
       </article>
