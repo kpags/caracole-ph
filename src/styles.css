@@ -1,3 +1,27 @@
+@font-face {
+  font-family: 'Caracole Century Gothic';
+  src: url('../assets/fonts/century-gothic-regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Caracole Didot';
+  src: url('../assets/fonts/didot-regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Caracole Didot Italic';
+  src: url('../assets/fonts/didot-italic.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   --ink: #1a1a18;
   --charcoal: #24231f;
@@ -8,8 +32,11 @@
   --line: rgba(26, 26, 24, 0.18);
   --scrollbar-thumb: #b69a68;
   --scrollbar-thumb-hover: #816b45;
-  --serif: 'Century Gothic', CenturyGothic, AppleGothic, sans-serif;
-  --sans: 'Century Gothic', CenturyGothic, AppleGothic, sans-serif;
+  /* Caracole typography: Century Gothic for communication; Didot for editorial display. */
+  --serif: Didot, 'Didot LT STD', 'Bodoni 72', 'Bodoni MT', Georgia, serif;
+  --serif-italic: Didot, 'Didot LT STD', 'Bodoni 72', 'Bodoni MT', Georgia, serif;
+  --sans: 'Century Gothic', CenturyGothic, AppleGothic, 'Helvetica Neue', Arial, sans-serif;
+  --input-font: Arial, Helvetica, sans-serif;
 }
 
 * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
@@ -20,12 +47,41 @@
 *::-webkit-scrollbar-corner { background: transparent; }
 html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-weight: 400; line-height: 1.5; text-rendering: optimizeLegibility; }
-body *:not(.pi) { font-family: 'Century Gothic', CenturyGothic, AppleGothic, sans-serif; }
+body *:not(.pi):not(input):not(textarea):not(select) { font-family: var(--sans); }
 body:has(.menu-panel.open) { overflow: hidden; }
 body:has(.filter-drawer.open) { overflow: hidden; }
 body:has(.account-drawer.open), body:has(.cart-drawer.open), body:has(.auth-modal), body:has(.designer-modal), body:has(.service-modal), body:has(.recommendation-modal), body:has(.review-modal), body:has(.inquiry-modal), body:has(.search-overlay) { overflow: hidden; }
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; }
+/* Form fields intentionally retain a neutral UI face for comfortable data entry. */
+input, textarea, select, option, .p-inputtext, .p-select-label, .p-multiselect-label,
+.p-inputchips-input, .p-inputchips-token-label, .ql-editor {
+  font-family: var(--input-font) !important;
+}
+h1, h2, h3 { font-family: var(--serif); font-weight: 400; }
+
+/* The bundled Caracole faces are intentionally limited to the storefront. */
+.site-shell {
+  --sans: 'Caracole Century Gothic', 'Century Gothic', CenturyGothic, AppleGothic, 'Helvetica Neue', Arial, sans-serif;
+  --serif: 'Caracole Didot', Didot, 'Didot LT STD', 'Bodoni 72', 'Bodoni MT', Georgia, serif;
+  --serif-italic: 'Caracole Didot Italic', Didot, 'Didot LT STD', 'Bodoni 72', 'Bodoni MT', Georgia, serif;
+}
+
+/* Keep the Admin interface in the brand sans while giving hierarchy a Didot display treatment. */
+.admin-shell, .admin-login-page { font-family: var(--sans); }
+.admin-shell :is(button, a, p, span, label, small, strong, td, th, dt, dd, li, legend),
+.admin-login-page :is(button, a, p, span, label, small, strong) {
+  font-family: var(--sans) !important;
+}
+.admin-shell :is(h1, h2, h3), .admin-login-page :is(h1, h2, h3) {
+  font-family: var(--serif) !important;
+  font-weight: 400;
+}
+.site-shell .testimonial-quote blockquote,
+.site-shell .about-story__closing > p:last-child {
+  font-family: var(--serif-italic);
+  font-style: normal;
+}
 button { color: inherit; }
 h1, h2, h3 { text-wrap: balance; }
 img, video { display: block; width: 100%; }
