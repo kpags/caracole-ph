@@ -8,6 +8,7 @@ import {
   ref,
   watch,
 } from "vue";
+import "primeicons/primeicons.css";
 import Accordion from "primevue/accordion";
 import AccordionContent from "primevue/accordioncontent";
 import AccordionHeader from "primevue/accordionheader";
