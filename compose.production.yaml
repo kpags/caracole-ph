@@ -10,9 +10,9 @@ services:
     environment:
       NITRO_HOST: 0.0.0.0
       NITRO_PORT: 3000
-      # Browser requests use the published API port; SSR uses Docker DNS.
-      NUXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-3000}
-      NUXT_API_INTERNAL_BASE_URL: http://api:3000
+      # Browser and SSR API addresses are complete URLs supplied by .env.
+      NUXT_PUBLIC_API_BASE_URL: ${NUXT_PUBLIC_API_BASE_URL}
+      NUXT_API_INTERNAL_BASE_URL: ${NUXT_API_INTERNAL_BASE_URL}
       NUXT_PUBLIC_MEDIA_BASE_URL: ${CLOUDFLARE_R2_PUBLIC_BASE_URL}
     ports:
       - "${CLIENT_PORT:-5173}:3000"
@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: admin/Dockerfile
       args:
-        VITE_API_URL: ${ADMIN_API_URL:-http://localhost:3000}
+        VITE_API_URL: ${ADMIN_API_URL}
         VITE_MEDIA_BASE_URL: ${CLOUDFLARE_R2_PUBLIC_BASE_URL}
     restart: unless-stopped
     depends_on:
@@ -67,9 +67,9 @@ services:
     env_file: .env
     environment:
       PORT: 3000
-      CORS_ORIGIN: http://localhost:${CLIENT_PORT:-5173},http://localhost:${ADMIN_PORT:-8080}
-      ADMIN_DASHBOARD_URL: http://localhost:${ADMIN_PORT:-8080}
-      ADMIN_INVITATION_SETUP_URL: http://localhost:${ADMIN_PORT:-8080}/admin/setup-password
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      ADMIN_DASHBOARD_URL: ${ADMIN_DASHBOARD_URL}
+      ADMIN_INVITATION_SETUP_URL: ${ADMIN_INVITATION_SETUP_URL}
     ports:
       - "${API_PORT:-3000}:3000"
     depends_on:
