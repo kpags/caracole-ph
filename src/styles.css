@@ -784,8 +784,12 @@ body.modal-scroll-lock { overflow: hidden; }
 .product-breadcrumb span:last-child { opacity: .55; }
 .product-intro { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(420px, .72fr); border-bottom: 1px solid var(--line); }
 .product-gallery { min-width: 0; padding: 28px 2vw 40px 4vw; border-right: 1px solid var(--line); }
-.product-gallery__stage { position: relative; aspect-ratio: 1.02; overflow: hidden; background: #efede6; }
-.product-gallery__stage > img { height: 100%; object-fit: cover; mix-blend-mode: multiply; animation: imageFade .45s ease; }
+.product-gallery__stage { position: relative; aspect-ratio: 1.02; overflow: hidden; background: #efede6; cursor: grab; touch-action: pan-y; }
+.product-gallery__stage > img { width: 100%; height: 100%; object-fit: cover; object-position: left center; mix-blend-mode: multiply; }
+.product-gallery__stage.is-auto-panning > img { animation: productImageAutoPan 28s linear infinite; animation-delay: var(--product-pan-delay, -2s); }
+.product-gallery__stage.is-dragging, .product-lifestyle__media.is-dragging { cursor: grabbing; user-select: none; }
+.product-image__drag-hint { position: absolute; z-index: 2; top: 18px; left: 18px; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 3px; background: rgba(247,245,238,.72); color: var(--ink); font-size: 9px; letter-spacing: .08em; pointer-events: none; }
+.product-image__drag-hint .pi { font-size: 12px; }
 .product-gallery__count { position: absolute; left: 22px; bottom: 20px; padding: 9px 11px; background: rgba(250,249,245,.88); backdrop-filter: blur(8px); font-size: 8px; letter-spacing: .15em; }
 .product-gallery__arrow { position: absolute; top: 50%; width: 45px; height: 45px; border: 1px solid rgba(26,26,24,.25); border-radius: 50%; background: rgba(250,249,245,.86); cursor: pointer; transform: translateY(-50%); transition: background .25s, color .25s; }
 .product-gallery__arrow:hover { background: var(--ink); color: white; }
@@ -842,7 +846,11 @@ body.modal-scroll-lock { overflow: hidden; }
 .product-lifestyle { min-height: 780px; display: grid; grid-template-columns: .65fr 1.35fr; background: var(--charcoal); color: white; }
 .product-lifestyle > div { align-self: end; padding: 7vw 5vw; }
 .product-lifestyle h2 { margin: 0; font: clamp(55px, 6vw, 90px)/.95 var(--serif); }
-.product-lifestyle img { height: 100%; min-height: 780px; object-fit: cover; }
+.product-lifestyle__media { position: relative; min-width: 0; min-height: 780px; overflow: hidden; cursor: grab; touch-action: pan-y; }
+.product-lifestyle__media img { display: block; width: 100%; height: 100%; min-height: 780px; object-fit: cover; object-position: left center; }
+.product-lifestyle__media.is-auto-panning img { animation: productImageAutoPan 28s linear infinite; animation-delay: var(--product-pan-delay, -2s); }
+@keyframes productImageAutoPan { 0%, 7.142857% { object-position: left center; } 50%, 57.142857% { object-position: right center; } 100% { object-position: left center; } }
+@media (prefers-reduced-motion: reduce) { .product-gallery__stage.is-auto-panning > img, .product-lifestyle__media.is-auto-panning img { animation: none; object-position: left center; } }
 
 /* Product recommendations */
 .cart-success-toast { position: fixed; z-index: 120; top: 28px; right: 28px; width: min(410px, calc(100vw - 36px)); min-height: 88px; display: grid; grid-template-columns: 42px 1fr 24px; gap: 14px; align-items: center; padding: 18px 18px 18px 20px; background: #286244; color: white; box-shadow: 0 16px 50px rgba(10,38,25,.28); }
@@ -1297,7 +1305,7 @@ body.modal-scroll-lock { overflow: hidden; }
   .product-specifications { padding: 0; border-left: 0; }
   .product-lifestyle { grid-template-columns: 1fr; min-height: 0; }
   .product-lifestyle > div { padding: 80px 24px; }
-  .product-lifestyle img { min-height: 62vh; }
+  .product-lifestyle__media, .product-lifestyle__media img { min-height: 62vh; }
   .recommendation-modal { padding: 52px 32px 38px; }
   .recommendation-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .review-modal { padding: 52px 36px 38px; }

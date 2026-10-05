@@ -10,6 +10,12 @@ const props = defineProps({
 })
 
 const currentImage = ref(0)
+const isGalleryPanning = ref(false)
+const isLifestylePanning = ref(false)
+const galleryPanPosition = ref(0)
+const lifestylePanPosition = ref(0)
+const galleryResumeDelay = ref(3000)
+const lifestyleResumeDelay = ref(3000)
 const quantity = ref(1)
 const deliveryMethod = ref('standard')
 const deliveryDate = ref('')
@@ -30,9 +36,14 @@ const isSubmittingInquiry = ref(false)
 const inquiryError = ref('')
 const cartToast = ref('')
 let cartToastTimer
+let galleryPanTimer
+let lifestylePanTimer
+const imageDrag = reactive({ active: false, moved: false, target: '', startX: 0, startPosition: 0, range: 0 })
 const { products, load } = useCatalog()
 
 const images = computed(() => [...new Set([props.product.image, ...(props.product.images ?? [])].filter(Boolean))])
+const galleryPanStyle = computed(() => panStyle(galleryPanPosition.value))
+const lifestylePanStyle = computed(() => panStyle(lifestylePanPosition.value))
 const description = computed(() => props.product.description && props.product.description !== '--' ? props.product.description : '')
 const categorySlug = computed(() => ({
   Living: 'living', Dining: 'dining', Bedroom: 'bedroom',
@@ -91,6 +102,122 @@ function loadCategoryRecommendations() {
 }
 
 watch(() => props.product.handle, loadCategoryRecommendations)
+
+function motionIsReduced() {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function panStyle(position) {
+  const safePosition = Math.max(0, Math.min(100, position))
+  // The loop holds on the left for two seconds, then takes 12 seconds to reach the right.
+  return { objectPosition: `${safePosition}% center`, '--product-pan-delay': `-${2 + (safePosition / 100) * 12}s` }
+}
+
+function scheduleGalleryPan(delay = 3000) {
+  window.clearTimeout(galleryPanTimer)
+  isGalleryPanning.value = false
+  if (motionIsReduced()) return
+  galleryPanTimer = window.setTimeout(() => {
+    isGalleryPanning.value = true
+    galleryResumeDelay.value = 3000
+  }, delay)
+}
+
+function scheduleLifestylePan(delay = 3000) {
+  window.clearTimeout(lifestylePanTimer)
+  isLifestylePanning.value = false
+  if (motionIsReduced()) return
+  lifestylePanTimer = window.setTimeout(() => {
+    isLifestylePanning.value = true
+    lifestyleResumeDelay.value = 3000
+  }, delay)
+}
+
+function panPosition(target) {
+  return target === 'gallery' ? galleryPanPosition : lifestylePanPosition
+}
+
+function setPanActive(target, active) {
+  if (target === 'gallery') isGalleryPanning.value = active
+  else isLifestylePanning.value = active
+}
+
+function schedulePan(target, delay) {
+  if (target === 'gallery') scheduleGalleryPan(delay)
+  else scheduleLifestylePan(delay)
+}
+
+function resumeDelay(target) {
+  return target === 'gallery' ? galleryResumeDelay : lifestyleResumeDelay
+}
+
+function getRenderedPanPosition(image) {
+  const rawPosition = window.getComputedStyle(image).objectPosition.split(/\s+/)[0]
+  const position = Number.parseFloat(rawPosition)
+  return rawPosition.endsWith('%') && Number.isFinite(position) ? Math.max(0, Math.min(100, position)) : 0
+}
+
+function getHorizontalPanRange(container, image) {
+  if (!image.naturalWidth || !image.naturalHeight) return 0
+  const scale = Math.max(container.clientWidth / image.naturalWidth, container.clientHeight / image.naturalHeight)
+  return Math.max(0, image.naturalWidth * scale - container.clientWidth)
+}
+
+function startImageDrag(target, event) {
+  if (event.button !== 0 || event.target.closest('button')) return
+  const container = event.currentTarget
+  const image = container.querySelector('img')
+  if (!image) return
+  const position = getRenderedPanPosition(image)
+  panPosition(target).value = position
+  setPanActive(target, false)
+  window.clearTimeout(target === 'gallery' ? galleryPanTimer : lifestylePanTimer)
+  imageDrag.active = true
+  imageDrag.moved = false
+  imageDrag.target = target
+  imageDrag.startX = event.clientX
+  imageDrag.startPosition = position
+  imageDrag.range = getHorizontalPanRange(container, image)
+  container.setPointerCapture?.(event.pointerId)
+}
+
+function moveImageDrag(event) {
+  if (!imageDrag.active || imageDrag.target === '') return
+  const distance = event.clientX - imageDrag.startX
+  if (Math.abs(distance) > 3) imageDrag.moved = true
+  if (!imageDrag.range) return
+  panPosition(imageDrag.target).value = Math.max(0, Math.min(100, imageDrag.startPosition - (distance / imageDrag.range) * 100))
+}
+
+function stopImageDrag(event) {
+  if (!imageDrag.active) return
+  event.currentTarget.releasePointerCapture?.(event.pointerId)
+  const { target, moved } = imageDrag
+  imageDrag.active = false
+  imageDrag.moved = false
+  imageDrag.target = ''
+  if (moved) resumeDelay(target).value = 5000
+  schedulePan(target, resumeDelay(target).value)
+}
+
+function selectImage(index) {
+  galleryPanPosition.value = 0
+  galleryResumeDelay.value = 3000
+  currentImage.value = index
+  scheduleGalleryPan()
+}
+
+watch(currentImage, scheduleGalleryPan)
+watch(() => images.value[1], scheduleLifestylePan)
+watch(() => props.product.handle, () => {
+  currentImage.value = 0
+  galleryPanPosition.value = 0
+  lifestylePanPosition.value = 0
+  galleryResumeDelay.value = 3000
+  lifestyleResumeDelay.value = 3000
+  scheduleGalleryPan()
+  scheduleLifestylePan()
+})
 
 const detailRows = computed(() => [
   ['Series', props.product.series],
@@ -249,11 +376,15 @@ onMounted(() => {
   window.addEventListener(WISHLIST_EVENT, refreshWishlist)
   refreshWishlist()
   loadCategoryRecommendations()
+  scheduleGalleryPan()
+  scheduleLifestylePan()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
   window.removeEventListener(WISHLIST_EVENT, refreshWishlist)
   window.clearTimeout(cartToastTimer)
+  window.clearTimeout(galleryPanTimer)
+  window.clearTimeout(lifestylePanTimer)
 })
 </script>
 
@@ -267,14 +398,15 @@ onBeforeUnmount(() => {
 
     <section class="product-intro">
       <div class="product-gallery">
-        <div class="product-gallery__stage">
-          <img :key="images[currentImage]" :src="images[currentImage]" :alt="`${product.name} view ${currentImage + 1}`" />
+        <div class="product-gallery__stage" :class="{ 'is-auto-panning': isGalleryPanning, 'is-dragging': imageDrag.active && imageDrag.target === 'gallery' }" @pointerdown="startImageDrag('gallery', $event)" @pointermove="moveImageDrag" @pointerup="stopImageDrag" @pointercancel="stopImageDrag">
+          <img :key="images[currentImage]" :src="images[currentImage]" :style="galleryPanStyle" :alt="`${product.name} view ${currentImage + 1}`" draggable="false" />
+          <span class="product-image__drag-hint"><i class="pi pi-arrows-h" aria-hidden="true"></i> Hold and drag to explore</span>
           <span class="product-gallery__count">{{ String(currentImage + 1).padStart(2, '0') }} / {{ String(images.length).padStart(2, '0') }}</span>
-          <button v-if="images.length > 1" class="product-gallery__arrow product-gallery__arrow--prev" type="button" aria-label="Previous image" @click="currentImage = (currentImage - 1 + images.length) % images.length">←</button>
-          <button v-if="images.length > 1" class="product-gallery__arrow product-gallery__arrow--next" type="button" aria-label="Next image" @click="currentImage = (currentImage + 1) % images.length">→</button>
+          <button v-if="images.length > 1" class="product-gallery__arrow product-gallery__arrow--prev" type="button" aria-label="Previous image" @click="selectImage((currentImage - 1 + images.length) % images.length)">←</button>
+          <button v-if="images.length > 1" class="product-gallery__arrow product-gallery__arrow--next" type="button" aria-label="Next image" @click="selectImage((currentImage + 1) % images.length)">→</button>
         </div>
         <div v-if="images.length > 1" class="product-gallery__thumbs" aria-label="Product images">
-          <button v-for="(image, index) in images" :key="image" type="button" :class="{ active: currentImage === index }" :aria-label="`Show image ${index + 1}`" :aria-current="currentImage === index" @click="currentImage = index">
+          <button v-for="(image, index) in images" :key="image" type="button" :class="{ active: currentImage === index }" :aria-label="`Show image ${index + 1}`" :aria-current="currentImage === index" @click="selectImage(index)">
             <img :src="image" alt="" loading="lazy" /><span>{{ String(index + 1).padStart(2, '0') }}</span>
           </button>
         </div>
@@ -335,7 +467,10 @@ onBeforeUnmount(() => {
 
     <section v-if="images.length > 1" class="product-lifestyle">
       <div><p class="eyebrow light">In the room</p><h2>See it in<br />a different light.</h2></div>
-      <img :src="images[1]" :alt="`${product.name} styled in an interior`" loading="lazy" />
+      <div class="product-lifestyle__media" :class="{ 'is-auto-panning': isLifestylePanning, 'is-dragging': imageDrag.active && imageDrag.target === 'lifestyle' }" @pointerdown="startImageDrag('lifestyle', $event)" @pointermove="moveImageDrag" @pointerup="stopImageDrag" @pointercancel="stopImageDrag">
+        <img :src="images[1]" :style="lifestylePanStyle" :alt="`${product.name} styled in an interior`" loading="lazy" draggable="false" />
+        <span class="product-image__drag-hint"><i class="pi pi-arrows-h" aria-hidden="true"></i> Hold and drag to explore</span>
+      </div>
     </section>
 
     <section class="product-reviews" aria-labelledby="product-reviews-title">
