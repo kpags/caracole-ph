@@ -12,7 +12,7 @@ const app = createApp({
   mailer: createMailer(config),
   storage: createCloudflareR2StorageFromConfig(config)
 })
-const server = app.listen(config.PORT, () => console.log(`API listening on port ${config.PORT}`))
+const server = app.listen(config.API_PORT, () => console.log(`API listening on port ${config.API_PORT}`))
 
 async function shutdown(signal) {
   console.log(`${signal} received; shutting down.`)

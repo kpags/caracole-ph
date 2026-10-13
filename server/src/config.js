@@ -5,7 +5,7 @@ const booleanFromEnv = z.enum(['true', 'false']).default('false').transform((val
 
 export const config = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().positive().default(3000),
+  API_PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().url(),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   APP_NAME: z.string().min(1).default('Caracole PH'),

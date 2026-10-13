@@ -37,7 +37,7 @@ function createStorage(client = new FakeS3Client()) {
 const serverDirectory = fileURLToPath(new URL('..', import.meta.url))
 const validEnvironment = {
   NODE_ENV: 'test',
-  PORT: '3000',
+  API_PORT: '3000',
   DATABASE_URL: 'postgresql://user:password@localhost:5432/caracole?schema=public',
   CORS_ORIGIN: 'http://localhost:5173',
   APP_NAME: 'Caracole PH',

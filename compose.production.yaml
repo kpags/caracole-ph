@@ -66,17 +66,17 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      PORT: 3000
+      API_PORT: ${API_PORT}
       CORS_ORIGIN: ${CORS_ORIGIN}
       ADMIN_DASHBOARD_URL: ${ADMIN_DASHBOARD_URL}
       ADMIN_INVITATION_SETUP_URL: ${ADMIN_INVITATION_SETUP_URL}
     ports:
-      - "${API_PORT:-3000}:3000"
+      - "${API_PORT}:${API_PORT}"
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:${API_PORT}/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 6
